@@ -2,12 +2,14 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
+#include "opencv2/opencv.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 
 static void initialization();
 static void handleEvents(bool* runningStatus);
+SDL_Texture* nextFrameAsTexture(SDL_Renderer* renderer, CvCapture* capture, bool externalCam);
 
 /********************
 *                   *
@@ -40,6 +42,9 @@ int main(int argc, char* argv[]) {
   timeinfo = localtime(&rawtime);
   strftime(timeText, 80, "%H:%M:%S", timeinfo);
 
+/*used to determine whether we'll use internal or external webcam*/
+  bool externalCam = 0;
+
 /*check command line flags for fullscreen*/
   bool fullscreen = 0;
   for (int i = 1; i < argc; i++) {
@@ -50,6 +55,10 @@ int main(int argc, char* argv[]) {
       window_h = current.h;
       window_w = current.w;
       SDL_Log("Current display mode is %dx%dpx", current.w, current.h);
+    }
+    if (strcmp(argv[i], "-e") == 0) {
+      externalCam = 1;
+      std::printf("Camera feed taken from external camera\n");
     }
   }
 
@@ -64,18 +73,21 @@ int main(int argc, char* argv[]) {
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
 
 /*used for drawing text, such as the clock*/
-  TTF_Font* font = TTF_OpenFont("assets/OpenSans-Regular.ttf", 12);
+  TTF_Font* font = TTF_OpenFont("assets/OpenSans-Regular.ttf", 20);
   const SDL_Color greenColor = {0, 255, 0, 255};
   SDL_Surface* textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
-  SDL_Texture* text = SDL_CreateTextureFromSurface(renderer, textSurface);
+  SDL_Texture* clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
 
 /*screenCorner is for placement of mentioned on-screen clock*/
   SDL_Rect screenCorner;
   screenCorner.x = screenCorner.y = 0;
-  SDL_QueryTexture(text, nullptr, nullptr, &screenCorner.w, &screenCorner.h); //get width and height of text
+  SDL_QueryTexture(clockTexture, nullptr, nullptr, &screenCorner.w, &screenCorner.h); //get width and height of text
   screenCorner.x = (window_w - screenCorner.w -10);
   screenCorner.y = (window_h - screenCorner.h);
 
+/*video feed from webcam*/
+  CvCapture* capture = 0;
+  capture = cvCaptureFromCAM(externalCam); 
 
 /**************
 *  main loop  *
@@ -84,9 +96,7 @@ int main(int argc, char* argv[]) {
   bool isRunning = true;
 
   while (isRunning) {
-
     frameStart = SDL_GetTicks();
-
     handleEvents(&isRunning);
 
 /*update clock*/
@@ -95,17 +105,22 @@ int main(int argc, char* argv[]) {
     strftime(timeText, 80, "%H:%M:%S", timeinfo);
 
 /*draw another texture for clock*/
-    SDL_Surface *textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
-    SDL_Texture *text = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
+    SDL_Texture* clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+
+/*next frame from webcam*/
+    SDL_Texture* frameTexture = nextFrameAsTexture(renderer, capture, fullscreen);
 
 /*render it all unto screen*/
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, text, nullptr, &screenCorner);
+    SDL_RenderCopy(renderer, frameTexture, nullptr, nullptr);
+    SDL_RenderCopy(renderer, clockTexture, nullptr, &screenCorner);
     SDL_RenderPresent(renderer);
 
 /*free used surfaces and textures*/
     SDL_FreeSurface(textSurface), textSurface = nullptr;
-    SDL_DestroyTexture(text), text = nullptr;
+    SDL_DestroyTexture(clockTexture), clockTexture = nullptr;
+    SDL_DestroyTexture(frameTexture), frameTexture = nullptr;
 
 /*slow down to 30FPS if running too fast*/
     frameTime = SDL_GetTicks() - frameStart;
@@ -117,12 +132,13 @@ int main(int argc, char* argv[]) {
 /*cleaning*/
   SDL_DestroyWindow(window), window = nullptr;
   SDL_DestroyTexture(imageSurface), imageSurface = nullptr;
-  SDL_DestroyTexture(text), text = nullptr;
   SDL_DestroyRenderer(renderer), renderer = nullptr;
 
   TTF_Quit();
   IMG_Quit();
   SDL_Quit();
+
+  cv::destroyAllWindows();
 
   std::printf("Program exited\n");
 
@@ -163,4 +179,22 @@ void handleEvents(bool* runningStatus) {
       }
     }
   }
+}
+
+/*get next frame from webcam*/
+SDL_Texture* nextFrameAsTexture(SDL_Renderer* renderer, CvCapture* capture, bool externalCam) {
+
+  IplImage* opencvimg = cvQueryFrame(capture);
+
+/*convert IplImage to an SDL_Surface, which is converted to an SDL_Texture*/
+  SDL_Surface* frameSurface = SDL_CreateRGBSurfaceFrom(
+            (void*)opencvimg->imageData, opencvimg->width,
+             opencvimg->height, opencvimg->depth*opencvimg->nChannels,
+             opencvimg->widthStep, 0xff0000, 0x00ff00, 0x0000ff, 0);
+
+  SDL_Texture* frameTexture = SDL_CreateTextureFromSurface(renderer, frameSurface);
+  
+  SDL_FreeSurface(frameSurface), frameSurface = nullptr;
+
+  return frameTexture;
 }
