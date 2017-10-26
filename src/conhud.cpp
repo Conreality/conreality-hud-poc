@@ -5,11 +5,17 @@
 #include <opencv2/opencv.hpp>
 #include <cstdio>
 #include <cstdlib>
-#include <iostream>
+
 
 static void initialization();
 static void handleEvents(bool* runningStatus);
-SDL_Texture* nextFrameAsTexture(SDL_Renderer* renderer, CvCapture* capture, bool externalCam);
+SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &mcvImg);
+static void detectFaces(cv::Mat frame);
+
+/*cascade for face detection*/
+cv::String file1 = "./haarcascades/haarcascade_frontalface_alt.xml";
+cv::CascadeClassifier face_cascade;
+CvMemStorage* storage;
 
 /********************
 *                   *
@@ -23,10 +29,6 @@ int main(int argc, char* argv[]) {
 
 /*for brevity*/
   const auto CENTERED = SDL_WINDOWPOS_CENTERED;
-
-/*default window size values, 16:9*/
-  int window_h = 504;
-  int window_w = 896;
 
 /*used for limiting clock speed*/
   const int FPS = 30;
@@ -45,16 +47,18 @@ int main(int argc, char* argv[]) {
 /*used to determine whether we'll use internal or external webcam*/
   bool externalCam = 0;
 
-/*check command line flags for fullscreen*/
-  bool fullscreen = 0;
+/*screen is set to fullscreen by default*/
+  bool fullscreen = 1;
+  SDL_DisplayMode current;
+  SDL_GetCurrentDisplayMode(0, &current); // obtain native resolution
+  int window_h = current.h;
+  int window_w = current.w;
+
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i],"-f") == 0) {
-      fullscreen = 1;
-      SDL_DisplayMode current;
-      SDL_GetCurrentDisplayMode(0, &current); // obtain native resolution
-      window_h = current.h;
-      window_w = current.w;
-      SDL_Log("Current display mode is %dx%dpx", current.w, current.h);
+    if (strcmp(argv[i],"-w") == 0) { //check if windowed mode is wanted
+      fullscreen = 0;
+      window_h = 504; //16:9
+      window_w = 896;
     }
     if (strcmp(argv[i], "-e") == 0) {
       externalCam = 1;
@@ -62,9 +66,11 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
+
 /*create necessary equipment*/
   SDL_Window* window;
-  SDL_Texture* imageSurface;
+  SDL_Texture* frameTexture;
   SDL_Renderer* renderer;
 
 /*window to do everything on*/
@@ -86,8 +92,11 @@ int main(int argc, char* argv[]) {
   screenCorner.y = (window_h - screenCorner.h);
 
 /*video feed from webcam*/
-  CvCapture* capture = 0;
-  capture = cvCaptureFromCAM(externalCam); 
+  cv::Mat frame;
+  cv::VideoCapture capture = 0;
+  capture.open(externalCam);
+
+  face_cascade.load(file1);
 
 /**************
 *  main loop  *
@@ -96,8 +105,15 @@ int main(int argc, char* argv[]) {
   bool isRunning = true;
 
   while (isRunning) {
+
     frameStart = SDL_GetTicks();
+
     handleEvents(&isRunning);
+
+/*get next frame*/
+    capture.read(frame);
+
+    detectFaces(frame);
 
 /*update clock*/
     time(&rawtime);
@@ -105,11 +121,11 @@ int main(int argc, char* argv[]) {
     strftime(timeText, 80, "%H:%M:%S", timeinfo);
 
 /*draw another texture for clock*/
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
-    SDL_Texture* clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
+    clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
 
-/*next frame from webcam*/
-    SDL_Texture* frameTexture = nextFrameAsTexture(renderer, capture, fullscreen);
+/*convert frame to a usable texture*/
+    frameTexture = CVMatToSDLTexture(renderer, frame);
 
 /*render it all unto screen*/
     SDL_RenderClear(renderer);
@@ -131,7 +147,6 @@ int main(int argc, char* argv[]) {
 
 /*cleaning*/
   SDL_DestroyWindow(window), window = nullptr;
-  SDL_DestroyTexture(imageSurface), imageSurface = nullptr;
   SDL_DestroyRenderer(renderer), renderer = nullptr;
 
   TTF_Quit();
@@ -181,12 +196,12 @@ void handleEvents(bool* runningStatus) {
   }
 }
 
-/*get next frame from webcam*/
-SDL_Texture* nextFrameAsTexture(SDL_Renderer* renderer, CvCapture* capture, bool externalCam) {
-
-  IplImage* opencvimg = cvQueryFrame(capture);
-
 /*convert IplImage to an SDL_Surface, which is converted to an SDL_Texture*/
+SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg) {
+
+  IplImage opencvimg2 = (IplImage)cvImg;
+  IplImage* opencvimg = &opencvimg2;
+
   SDL_Surface* frameSurface = SDL_CreateRGBSurfaceFrom(
             (void*)opencvimg->imageData, opencvimg->width,
              opencvimg->height, opencvimg->depth*opencvimg->nChannels,
@@ -197,4 +212,21 @@ SDL_Texture* nextFrameAsTexture(SDL_Renderer* renderer, CvCapture* capture, bool
   SDL_FreeSurface(frameSurface), frameSurface = nullptr;
 
   return frameTexture;
+}
+
+/*detect a face and draw an ellipse around it*/
+void detectFaces(cv::Mat frame) {
+  cv::Mat orig = frame.clone();
+  cv::Mat grayFrame;
+
+  cvtColor(orig, grayFrame, CV_BGR2GRAY);
+  equalizeHist(grayFrame, grayFrame);
+
+  std::vector<cv::Rect> faces;
+  face_cascade.detectMultiScale(grayFrame, faces);
+
+  for (int i = 0; i < faces.size(); i++) {
+    cv::Point center(faces[i].x + faces[i].width*0.5, faces[i].y + faces[i].height*0.5);
+    cv::ellipse(frame, center, cv::Size(faces[i].width*0.5, faces[i].height*0.5), 0, 0, 360, cv::Scalar(255,0,0), 4, 8, 0);
+  }
 }
