@@ -1,7 +1,8 @@
 CXX      ?= c++ -std=c++14
-CPPFLAGS ?= $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv)
-LDFLAGS  ?= $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv)
 PANDOC   ?= pandoc
+
+CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv)
+LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv)
 
 PACKAGE  := conhud
 VERSION  := $(shell cat ../VERSION)
