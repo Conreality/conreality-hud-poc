@@ -1,4 +1,4 @@
-CXX      ?= c++ -std=c++14
+CXX      := c++ -std=c++14
 PANDOC   ?= pandoc
 
 CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv)

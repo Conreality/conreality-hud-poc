@@ -5,17 +5,18 @@
 #include <opencv2/opencv.hpp>
 #include <cstdio>
 #include <cstdlib>
-
+#include <memory>
 
 static void initialization();
 static void handleEvents(bool* runningStatus);
 SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &mcvImg);
+//std::unique_ptr<SDL_Texture, void(*)(SDL_Surface*)> CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg);
 static void detectFaces(cv::Mat frame);
 
 /*cascade for face detection*/
-cv::String file1 = "./haarcascades/haarcascade_frontalface_alt.xml";
-cv::CascadeClassifier face_cascade;
-CvMemStorage* storage;
+static cv::String file1 = "./haarcascades/haarcascade_frontalface_alt.xml";
+static cv::CascadeClassifier face_cascade;
+static std::unique_ptr<CvMemStorage> storage;
 
 /********************
 *                   *
@@ -69,25 +70,28 @@ int main(int argc, char* argv[]) {
   SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
 
 /*create necessary equipment*/
-  SDL_Window* window;
-  SDL_Texture* frameTexture;
-  SDL_Renderer* renderer;
+  std::unique_ptr<SDL_Window, void(*)(SDL_Window*)> window(nullptr, SDL_DestroyWindow);
+  std::unique_ptr<SDL_Renderer, void(*)(SDL_Renderer*)> renderer(nullptr, SDL_DestroyRenderer);
+  std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> textSurface(nullptr, SDL_FreeSurface);
+  std::unique_ptr<SDL_Texture, void(*)(SDL_Texture*)> frameTexture(nullptr, SDL_DestroyTexture);
+  std::unique_ptr<SDL_Texture, void(*)(SDL_Texture*)> clockTexture(nullptr, SDL_DestroyTexture);
+  std::unique_ptr<TTF_Font, void(*)(TTF_Font*)> font(nullptr, TTF_CloseFont);
 
 /*window to do everything on*/
-  window = SDL_CreateWindow("SDL Window", CENTERED, CENTERED, window_w, window_h, fullscreen);
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+  window.reset(SDL_CreateWindow("SDL Window", CENTERED, CENTERED, window_w, window_h, fullscreen));
+  renderer.reset(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED));
+  SDL_SetRenderDrawColor(renderer.get(), 0, 0, 0, 0);
 
 /*used for drawing text, such as the clock*/
-  TTF_Font* font = TTF_OpenFont("assets/OpenSans-Regular.ttf", 20);
   const SDL_Color greenColor = {0, 255, 0, 255};
-  SDL_Surface* textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
-  SDL_Texture* clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+  font.reset(TTF_OpenFont("assets/OpenSans-Regular.ttf", 20));
+  textSurface.reset(TTF_RenderText_Solid(font.get(), timeText, greenColor));
+  clockTexture.reset(SDL_CreateTextureFromSurface(renderer.get(), textSurface.get()));
 
 /*screenCorner is for placement of mentioned on-screen clock*/
   SDL_Rect screenCorner;
   screenCorner.x = screenCorner.y = 0;
-  SDL_QueryTexture(clockTexture, nullptr, nullptr, &screenCorner.w, &screenCorner.h); //get width and height of text
+  SDL_QueryTexture(clockTexture.get(), nullptr, nullptr, &screenCorner.w, &screenCorner.h); //get width and height of text
   screenCorner.x = (window_w - screenCorner.w -10);
   screenCorner.y = (window_h - screenCorner.h);
 
@@ -121,22 +125,22 @@ int main(int argc, char* argv[]) {
     strftime(timeText, 80, "%H:%M:%S", timeinfo);
 
 /*draw another texture for clock*/
-    textSurface = TTF_RenderText_Solid(font, timeText, greenColor);
-    clockTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textSurface.reset(TTF_RenderText_Solid(font.get(), timeText, greenColor));
+    clockTexture.reset(SDL_CreateTextureFromSurface(renderer.get(), textSurface.get()));
 
 /*convert frame to a usable texture*/
-    frameTexture = CVMatToSDLTexture(renderer, frame);
+    frameTexture.reset(CVMatToSDLTexture(renderer.get(), frame));
 
 /*render it all unto screen*/
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, frameTexture, nullptr, nullptr);
-    SDL_RenderCopy(renderer, clockTexture, nullptr, &screenCorner);
-    SDL_RenderPresent(renderer);
+    SDL_RenderClear(renderer.get());
+    SDL_RenderCopy(renderer.get(), frameTexture.get(), nullptr, nullptr);
+    SDL_RenderCopy(renderer.get(), clockTexture.get(), nullptr, &screenCorner);
+    SDL_RenderPresent(renderer.get());
 
 /*free used surfaces and textures*/
-    SDL_FreeSurface(textSurface), textSurface = nullptr;
-    SDL_DestroyTexture(clockTexture), clockTexture = nullptr;
-    SDL_DestroyTexture(frameTexture), frameTexture = nullptr;
+    textSurface.reset();
+    clockTexture.reset();
+    frameTexture.reset();
 
 /*slow down to 30FPS if running too fast*/
     frameTime = SDL_GetTicks() - frameStart;
@@ -146,9 +150,10 @@ int main(int argc, char* argv[]) {
   }
 
 /*cleaning*/
-  SDL_DestroyWindow(window), window = nullptr;
-  SDL_DestroyRenderer(renderer), renderer = nullptr;
-
+  window.reset();
+  renderer.reset();
+  font.reset();
+  
   TTF_Quit();
   IMG_Quit();
   SDL_Quit();
@@ -202,14 +207,15 @@ SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg) {
   IplImage opencvimg2 = (IplImage)cvImg;
   IplImage* opencvimg = &opencvimg2;
 
-  SDL_Surface* frameSurface = SDL_CreateRGBSurfaceFrom(
+  std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> frameSurface(nullptr, SDL_FreeSurface);
+  frameSurface.reset(SDL_CreateRGBSurfaceFrom(
             (void*)opencvimg->imageData, opencvimg->width,
              opencvimg->height, opencvimg->depth*opencvimg->nChannels,
-             opencvimg->widthStep, 0xff0000, 0x00ff00, 0x0000ff, 0);
+             opencvimg->widthStep, 0xff0000, 0x00ff00, 0x0000ff, 0));
 
-  SDL_Texture* frameTexture = SDL_CreateTextureFromSurface(renderer, frameSurface);
-  
-  SDL_FreeSurface(frameSurface), frameSurface = nullptr;
+  SDL_Texture* frameTexture = (SDL_CreateTextureFromSurface(renderer, frameSurface.get()));
+
+  frameSurface.reset();
 
   return frameTexture;
 }
