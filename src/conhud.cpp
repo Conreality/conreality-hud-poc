@@ -1,4 +1,3 @@
-
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
@@ -10,13 +9,12 @@
 static void initialization();
 static void handleEvents(bool* runningStatus);
 SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &mcvImg);
-//std::unique_ptr<SDL_Texture, void(*)(SDL_Surface*)> CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg);
-static void detectFaces(cv::Mat frame);
 
 /*cascade for face detection*/
 static cv::String file1 = "./haarcascades/haarcascade_frontalface_alt.xml";
-static cv::CascadeClassifier face_cascade;
-static std::unique_ptr<CvMemStorage> storage;
+static cv::String file2 = "./haarcascades/haarcascade_eye_tree_eyeglasses.xml";
+
+static cv::CascadeClassifier face_cascade, eyes_cascade;
 
 /********************
 *                   *
@@ -101,6 +99,14 @@ int main(int argc, char* argv[]) {
   capture.open(externalCam);
 
   face_cascade.load(file1);
+  eyes_cascade.load(file2);
+
+  int radius = 300;
+
+  cv::Mat orig, grayFrame;
+  cv::Point priorCenter(0, 0);
+
+  std::vector<cv::Rect> faces, eyes;
 
 /**************
 *  main loop  *
@@ -117,7 +123,36 @@ int main(int argc, char* argv[]) {
 /*get next frame*/
     capture.read(frame);
 
-    detectFaces(frame);
+
+    orig = frame.clone();
+
+    cvtColor(orig, grayFrame, CV_BGR2GRAY);
+    equalizeHist(grayFrame, grayFrame);
+
+    face_cascade.detectMultiScale(grayFrame, faces, 1.3,2,0,cv::Size(30,30));
+
+    for (int i = 0; i < faces.size(); i++) {
+
+      cv::Point center(faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2);
+
+      if(priorCenter.x == 0) {
+        priorCenter = center;
+        break;
+      }
+
+      if(abs(center.x - priorCenter.x) < 10 && abs(center.y - priorCenter.y) < 10) {
+	    center = priorCenter;
+      }
+
+      priorCenter = center;
+
+      cv::Mat face = grayFrame(faces[i]);
+      eyes_cascade.detectMultiScale(face, eyes, 1.3,0,0);
+    
+      if(eyes.size() > 0) {
+          cv::circle(frame, center, radius/3, cv::Scalar(255,0,0), 2, 8, 0);
+      }
+    }
 
 /*update clock*/
     time(&rawtime);
@@ -218,21 +253,4 @@ SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg) {
   frameSurface.reset();
 
   return frameTexture;
-}
-
-/*detect a face and draw an ellipse around it*/
-void detectFaces(cv::Mat frame) {
-  cv::Mat orig = frame.clone();
-  cv::Mat grayFrame;
-
-  cvtColor(orig, grayFrame, CV_BGR2GRAY);
-  equalizeHist(grayFrame, grayFrame);
-
-  std::vector<cv::Rect> faces;
-  face_cascade.detectMultiScale(grayFrame, faces);
-
-  for (int i = 0; i < faces.size(); i++) {
-    cv::Point center(faces[i].x + faces[i].width*0.5, faces[i].y + faces[i].height*0.5);
-    cv::ellipse(frame, center, cv::Size(faces[i].width*0.5, faces[i].height*0.5), 0, 0, 360, cv::Scalar(255,0,0), 4, 8, 0);
-  }
 }
