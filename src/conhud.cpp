@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
   face_cascade.load(file1);
   eyes_cascade.load(file2);
 
-  int radius = 300;
+  int radius;
 
   cv::Mat orig, grayFrame;
   cv::Point priorCenter(0, 0);
@@ -122,7 +122,6 @@ int main(int argc, char* argv[]) {
 
 /*get next frame*/
     capture.read(frame);
-
 
     orig = frame.clone();
 
@@ -149,6 +148,8 @@ int main(int argc, char* argv[]) {
       cv::Mat face = grayFrame(faces[i]);
       eyes_cascade.detectMultiScale(face, eyes, 1.3,0,0);
     
+      radius = ceil(abs(faces[i].height + (frame.size().height/6) - abs(faces[i].height % (frame.size().height/6))));
+
       if(eyes.size() > 0) {
           cv::circle(frame, center, radius/3, cv::Scalar(255,0,0), 2, 8, 0);
       }
