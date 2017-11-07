@@ -9,6 +9,7 @@
 static void initialization();
 static void handleEvents(bool* runningStatus);
 SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &mcvImg);
+void detectFaces(cv::Mat frame);
 
 /*cascade for face detection*/
 static cv::String file1 = "./haarcascades/haarcascade_frontalface_alt.xml";
@@ -101,13 +102,6 @@ int main(int argc, char* argv[]) {
   face_cascade.load(file1);
   eyes_cascade.load(file2);
 
-  int radius;
-
-  cv::Mat orig, grayFrame;
-  cv::Point priorCenter(0, 0);
-
-  std::vector<cv::Rect> faces, eyes;
-
 /**************
 *  main loop  *
 **************/
@@ -123,37 +117,7 @@ int main(int argc, char* argv[]) {
 /*get next frame*/
     capture.read(frame);
 
-    orig = frame.clone();
-
-    cvtColor(orig, grayFrame, CV_BGR2GRAY);
-    equalizeHist(grayFrame, grayFrame);
-
-    face_cascade.detectMultiScale(grayFrame, faces, 1.3,2,0,cv::Size(30,30));
-
-    for (int i = 0; i < faces.size(); i++) {
-
-      cv::Point center(faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2);
-
-      if(priorCenter.x == 0) {
-        priorCenter = center;
-        break;
-      }
-
-      if(abs(center.x - priorCenter.x) < 10 && abs(center.y - priorCenter.y) < 10) {
-	    center = priorCenter;
-      }
-
-      priorCenter = center;
-
-      cv::Mat face = grayFrame(faces[i]);
-      eyes_cascade.detectMultiScale(face, eyes, 1.3,0,0);
-    
-      radius = ceil(abs(faces[i].height + (frame.size().height/6) - abs(faces[i].height % (frame.size().height/6))));
-
-      if(eyes.size() > 0) {
-          cv::circle(frame, center, radius/3, cv::Scalar(255,0,0), 2, 8, 0);
-      }
-    }
+    detectFaces(frame);
 
 /*update clock*/
     time(&rawtime);
@@ -254,4 +218,40 @@ SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg) {
   frameSurface.reset();
 
   return frameTexture;
+}
+
+/*detect a face and draw a circle around it*/
+void detectFaces(cv::Mat frame) {
+  cv::Mat orig = frame.clone();
+  cv::Mat grayFrame;
+  int radius;
+
+  cvtColor(orig, grayFrame, CV_BGR2GRAY);
+  equalizeHist(grayFrame, grayFrame);
+
+  std::vector<cv::Rect> faces, eyes;
+
+  face_cascade.detectMultiScale(grayFrame, faces, 1.3,2,0,cv::Size(30,30));
+
+  for (int i = 0; i < faces.size(); i++) {
+
+/*middle point of detected face*/
+    cv::Point center(faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2);
+
+/*divides the screen width to 30 points, rounds center.x to the nearest one*/
+    center.x = ceil(abs(center.x + (frame.size().width/30) - abs(center.x % (frame.size().width/30))));
+/*divides the screen height to 20 points, rounds center.y to the nearest one*/
+    center.y = ceil(abs(center.y + (frame.size().height/20) - abs(center.y % (frame.size().height/20))));
+/*30 and 20 are arbitrary numbers, higher number means more accuracy but also more shakiness*/
+
+/*detection circles radius is based on the screen height, 6 different sizes, also arbitrary*/
+    radius = ceil(abs(faces[i].height + (frame.size().height/6) - abs(faces[i].height % (frame.size().height/6))));
+
+    cv::Mat face = grayFrame(faces[i]);
+    eyes_cascade.detectMultiScale(face, eyes, 1.3,1,0);
+
+    if(eyes.size() > 0) {
+        cv::circle(frame, center, radius/3, cv::Scalar(255,0,0), 2, 8, 0);
+    }
+  }
 }
