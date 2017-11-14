@@ -61,7 +61,6 @@ int main(int argc, char* argv[]) {
       std::printf("Camera feed taken from external camera\n");
     }
   }
-
   SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
 
 /*create necessary equipment*/
@@ -91,9 +90,13 @@ int main(int argc, char* argv[]) {
   screenCorner.y = (window_h - screenCorner.h);
 
 /*video feed from webcam*/
-  cv::Mat frame;
-  cv::VideoCapture capture = 0;
+  cv::VideoCapture capture;
   capture.open(externalCam);
+
+  if (!capture.isOpened()) {
+    return -1;
+  }
+  cv::Mat frame;
 
   face_cascade.load(file1);
   eyes_cascade.load(file2);
@@ -108,10 +111,10 @@ int main(int argc, char* argv[]) {
 
     frameStart = SDL_GetTicks();
 
-    handleEvents(&isRunning);
-
 /*get next frame*/
     capture.read(frame);
+
+    handleEvents(&isRunning);
 
     detectFaces(frame);
 
