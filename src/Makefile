@@ -1,9 +1,9 @@
-CXX      := c++ -std=c++14
+CXX      := c++ -std=c++14 -I/usr/include/osvr -Wl,-rpath-link,/usr/lib/libjsoncpp.so
+
 PANDOC   ?= pandoc
 
-CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv)
-LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv)
-
+CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv glu gl libdrm jsoncpp)
+LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv glu gl libdrm jsoncpp) -losvrClientKit 
 PACKAGE  := conhud
 VERSION  := $(shell cat ../VERSION)
 
@@ -17,7 +17,7 @@ TARGETS  := conhud
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -o $@ -c $<
 
 %: %.o
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LOADLIBES) $(LDLIBS)
+	$(CXX) $(TARGET_ARCH) -o $@ $^ $(LOADLIBES) $(LDLIBS) $(LDFLAGS)
 
 conhud: conhud.o
 

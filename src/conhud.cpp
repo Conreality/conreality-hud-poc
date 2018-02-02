@@ -1,17 +1,31 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
+#include <SDL_opengl.h>
+//#include <GL/gl.h>
+//#include <GL/glu.h>
+//#include <GL/freeglut.h>
+#include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <vector>
 
-#include "facedetection.h"
+#include <osvr/ClientKit/ClientKit.h>
+#include <osvr/ClientKit/Display.h>
 
+#include "SDL2Helpers.h"
+
+
+cv::VideoCapture capture;
+cv::Mat frame;
+GLuint texture;
+void render(osvr::clientkit::DisplayConfig &display);
+void draw(cv::Mat img);
 static void initialization();
 static void handleEvents(bool* runningStatus);
-SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &mcvImg);
 
 /********************
 *                   *
@@ -45,10 +59,8 @@ int main(int argc, char* argv[]) {
 
 /*screen is set to fullscreen by default*/
   bool fullscreen = 1;
-  SDL_DisplayMode current;
-  SDL_GetCurrentDisplayMode(0, &current); // obtain native resolution
-  int window_h = current.h;
-  int window_w = current.w;
+  int window_h = 1080;
+  int window_w = 1920;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i],"-w") == 0) { //check if windowed mode is wanted
@@ -63,43 +75,44 @@ int main(int argc, char* argv[]) {
   }
   SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
 
-/*create necessary equipment*/
-  std::unique_ptr<SDL_Window, void(*)(SDL_Window*)> window(nullptr, SDL_DestroyWindow);
-  std::unique_ptr<SDL_Renderer, void(*)(SDL_Renderer*)> renderer(nullptr, SDL_DestroyRenderer);
-  std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> textSurface(nullptr, SDL_FreeSurface);
-  std::unique_ptr<SDL_Texture, void(*)(SDL_Texture*)> frameTexture(nullptr, SDL_DestroyTexture);
-  std::unique_ptr<SDL_Texture, void(*)(SDL_Texture*)> clockTexture(nullptr, SDL_DestroyTexture);
-  std::unique_ptr<TTF_Font, void(*)(TTF_Font*)> font(nullptr, TTF_CloseFont);
+  osvr::SDL2::Lib lib;
 
-/*window to do everything on*/
-  window.reset(SDL_CreateWindow("SDL Window", CENTERED, CENTERED, window_w, window_h, fullscreen));
-  renderer.reset(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED));
-  SDL_SetRenderDrawColor(renderer.get(), 0, 0, 0, 0);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
 
-/*used for drawing text, such as the clock*/
-  const SDL_Color greenColor = {0, 255, 0, 255};
-  font.reset(TTF_OpenFont("assets/OpenSans-Regular.ttf", 20));
-  textSurface.reset(TTF_RenderText_Solid(font.get(), timeText, greenColor));
-  clockTexture.reset(SDL_CreateTextureFromSurface(renderer.get(), textSurface.get()));
+  auto window = osvr::SDL2::createWindow("Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_w, window_h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 
-/*screenCorner is for placement of mentioned on-screen clock*/
-  SDL_Rect screenCorner;
-  screenCorner.x = screenCorner.y = 0;
-  SDL_QueryTexture(clockTexture.get(), nullptr, nullptr, &screenCorner.w, &screenCorner.h); //get width and height of text
-  screenCorner.x = (window_w - screenCorner.w -10);
-  screenCorner.y = (window_h - screenCorner.h);
+  if (!window) {
+    std::printf("Failed to create window!\n");
+    return EXIT_FAILURE;
+  }
 
-/*video feed from webcam*/
-  cv::VideoCapture capture;
+  osvr::SDL2::GLContext glctx(window.get());
+  SDL_GL_SetSwapInterval(1);
+
+  osvr::clientkit::ClientContext ctx("com.osvr.example.SDLOpenGL");
+  osvr::clientkit::DisplayConfig display(ctx);
+
+  if (!display.valid()) {
+    std::printf("Failed to get display config!\n");
+    return EXIT_FAILURE;
+  }
+
+  while (!display.checkStartup()) {
+    ctx.update();
+  }
+
+  glGenTextures(1, &texture);
+
+  cv::Mat frame;
+  capture >> frame;
+
   capture.open(externalCam);
 
-  if (!capture.isOpened()) {
-    return -1;
-  }
-  cv::Mat frame;
+  if (!capture.isOpened()) {return EXIT_FAILURE;}
 
-  face_cascade.load(file1);
-  eyes_cascade.load(file2);
+  //capture.set(cv::CAP_PROP_FRAME_WIDTH, 1280);
+  //capture.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
 
 /**************
 *  main loop  *
@@ -111,35 +124,17 @@ int main(int argc, char* argv[]) {
 
     frameStart = SDL_GetTicks();
 
-/*get next frame*/
-    capture.read(frame);
-
     handleEvents(&isRunning);
-
-    detectFaces(frame);
 
 /*update clock*/
     time(&rawtime);
     timeinfo = localtime(&rawtime);
     strftime(timeText, 80, "%H:%M:%S", timeinfo);
 
-/*draw another texture for clock*/
-    textSurface.reset(TTF_RenderText_Solid(font.get(), timeText, greenColor));
-    clockTexture.reset(SDL_CreateTextureFromSurface(renderer.get(), textSurface.get()));
-
-/*convert frame to a usable texture*/
-    frameTexture.reset(CVMatToSDLTexture(renderer.get(), frame));
-
-/*render it all unto screen*/
-    SDL_RenderClear(renderer.get());
-    SDL_RenderCopy(renderer.get(), frameTexture.get(), nullptr, nullptr);
-    SDL_RenderCopy(renderer.get(), clockTexture.get(), nullptr, &screenCorner);
-    SDL_RenderPresent(renderer.get());
-
-/*free used surfaces and textures*/
-    textSurface.reset();
-    clockTexture.reset();
-    frameTexture.reset();
+/*update and render video feed*/
+    ctx.update();
+    render(display);
+    SDL_GL_SwapWindow(window.get());
 
 /*slow down to 30FPS if running too fast*/
     frameTime = SDL_GetTicks() - frameStart;
@@ -148,11 +143,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-/*cleaning*/
-  window.reset();
-  renderer.reset();
-  font.reset();
-  
   TTF_Quit();
   IMG_Quit();
   SDL_Quit();
@@ -200,21 +190,46 @@ void handleEvents(bool* runningStatus) {
   }
 }
 
-/*convert IplImage to an SDL_Surface, which is converted to an SDL_Texture*/
-SDL_Texture* CVMatToSDLTexture(SDL_Renderer* renderer, cv::Mat &cvImg) {
+void render(osvr::clientkit::DisplayConfig &display) {
+  display.forEachEye([](osvr::clientkit::Eye eye) {
+    eye.forEachSurface([](osvr::clientkit::Surface surface) {
+      auto viewport = surface.getRelativeViewport();
+      glViewport(static_cast<GLint>(viewport.left),
+                 static_cast<GLint>(viewport.bottom),
+                 static_cast<GLsizei>(viewport.width),
+                 static_cast<GLsizei>(viewport.height));
 
-  IplImage opencvimg2 = (IplImage)cvImg;
-  IplImage* opencvimg = &opencvimg2;
+      glLoadIdentity();
 
-  std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> frameSurface(nullptr, SDL_FreeSurface);
-  frameSurface.reset(SDL_CreateRGBSurfaceFrom(
-            (void*)opencvimg->imageData, opencvimg->width,
-             opencvimg->height, opencvimg->depth*opencvimg->nChannels,
-             opencvimg->widthStep, 0xff0000, 0x00ff00, 0x0000ff, 0));
+      capture >> frame;
 
-  SDL_Texture* frameTexture = (SDL_CreateTextureFromSurface(renderer, frameSurface.get()));
+      cv::flip(frame, frame, 0);
 
-  frameSurface.reset();
+      draw(frame);
+    });
+  });
+}
 
-  return frameTexture;
+void draw(cv::Mat img) {
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.size().width, img.size().height, 0, GL_BGR, GL_UNSIGNED_BYTE, img.data);
+
+  glEnable(GL_TEXTURE_2D);
+
+  glBegin(GL_QUADS);
+    glTexCoord2d(0.0, 1.0);
+    glVertex2d(-1, 1);
+    glTexCoord2d(0.0, 0.0);
+    glVertex2d(-1, -1);
+    glTexCoord2d(1.0, 0.0);
+    glVertex2d(1, -1);
+    glTexCoord2d(1.0, 1.0);
+    glVertex2d(1, 1);
+  glEnd();
+
+  glDisable(GL_TEXTURE_2D);
+  glDeleteTextures(1, &texture);
 }
