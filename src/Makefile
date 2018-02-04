@@ -1,4 +1,4 @@
-CXX      := c++ -std=c++14 -I/usr/include/osvr -Wl,-rpath-link,/usr/lib/libjsoncpp.so
+CXX      := c++ -std=c++14 -I/usr/include/osvr
 
 PANDOC   ?= pandoc
 
