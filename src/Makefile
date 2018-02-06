@@ -1,9 +1,9 @@
-CXX      := c++ -std=c++14 -I/usr/include/osvr
+CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so
 
 PANDOC   ?= pandoc
 
 CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image opencv glu gl libdrm jsoncpp)
-LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv glu gl libdrm jsoncpp) -losvrClientKit 
+LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image opencv glu gl libdrm jsoncpp) -losvrClientKit -lpthread
 PACKAGE  := conhud
 VERSION  := $(shell cat ../VERSION)
 
