@@ -29,6 +29,10 @@ std::vector<std::string> objectNamesFromFile(std::string const filename);
 static void handleEvents(bool* running_status);
 void printHelp();
 
+struct image_data {
+  cv::Mat frame;
+};
+
 /********************
 *                   *
 *   MAIN FUNCTION   *
@@ -135,11 +139,15 @@ int main(int argc, char* argv[]) {
   } else if (isdigit(filename[0])) {
     capture.open(stoi(filename));
   } 
-  if (!capture.isOpened()) { std::printf("No video feed!\n"); return EXIT_FAILURE; }
+  if (!capture.isOpened()) { std::printf("Failed to open camera!\n"); return EXIT_FAILURE; }
 
-  cv::Mat capt_frame, pros_frame;
-  std::queue<cv::Mat> frame_queue;
+  cv::Mat capt_frame;
+  std::queue<image_data> image_queue;
+
   capture >> capt_frame;
+  if (capt_frame.empty()) { std::printf("Failed to capture a frame!\n"); return EXIT_FAILURE; }
+
+  image_data capt_image;
 
   std::vector<bbox_t> result_vec;
 
@@ -160,24 +168,24 @@ int main(int argc, char* argv[]) {
 
     capture >> capt_frame;
     if (capt_frame.empty()) { std::printf("Video feed has ended\n"); break; }
-    frame_queue.push(capt_frame);
 
-    if (!frame_queue.empty()) {
+    capt_image.frame = capt_frame;
+    image_queue.push(capt_image);
 
-      pros_frame = frame_queue.front();
+    if (!image_queue.empty()) {
 
 /*detect objects and draw a box around them*/
-      result_vec = detector.detect(pros_frame);
-      drawBoxes(pros_frame, result_vec, object_names);
+      result_vec = detector.detect(image_queue.front().frame);
+      drawBoxes(image_queue.front().frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
 
 /*update and render video feed*/
       ctx.update();
-      cv::flip(pros_frame, pros_frame, 0);
-      render(display, pros_frame);
+      cv::flip(image_queue.front().frame, image_queue.front().frame, 0);
+      render(display, image_queue.front().frame);
       SDL_GL_SwapWindow(window.get());
 
-      frame_queue.pop();
+      image_queue.pop();
     }
 
 /*slow down to 30FPS if running faster*/
