@@ -1,4 +1,4 @@
-CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so
+CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so -DENABLE_OSVR
 
 PANDOC   ?= pandoc
 

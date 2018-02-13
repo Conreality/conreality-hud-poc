@@ -10,28 +10,42 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <thread>
+#include <future>
 #include <queue>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <tbb/concurrent_queue.h>
 
+#ifdef ENABLE_OSVR
 #include <osvr/ClientKit/ClientKit.h>
 #include <osvr/ClientKit/Display.h>
 
 #include "SDL2Helpers.h"
+#endif
 
 #include "yolo_v2_class.hpp"
-
-GLuint texture;
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame);
-void drawToHMD(cv::Mat img);
-void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
-void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
-cv::Scalar objectIdToColor(int obj_id);
-std::vector<std::string> objectNamesFromFile(std::string const filename);
-static void handleEvents(bool* running_status);
-void printHelp();
 
 struct image_data {
   cv::Mat frame;
 };
+
+struct control_input{
+  SDL_Event ev;
+};
+
+control_input getEvents();
+static void handleEvents(bool* running_status, control_input event);
+#ifdef ENABLE_OSVR
+void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture);
+void drawToHMD(cv::Mat img, GLuint texture);
+#endif
+void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
+void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
+cv::Scalar objectIdToColor(int obj_id);
+std::vector<std::string> objectNamesFromFile(std::string const filename);
+void printHelp();
 
 /********************
 *                   *
@@ -41,7 +55,7 @@ struct image_data {
 
 int main(int argc, char* argv[]) {
 
-  std::string filename = "1";
+  std::string filename = "0";
   std::string names_file = "darknet/data/voc.names";
   std::string cfg_file = "darknet/cfg/tiny-yolo-voc.cfg";
   std::string weights_file = "darknet/tiny-yolo-voc.weights";
@@ -98,11 +112,12 @@ int main(int argc, char* argv[]) {
 
   auto object_names = objectNamesFromFile(names_file);
 
-  SDL_Init(SDL_INIT_VIDEO);
+#ifdef ENABLE_OSVR
+
+  GLuint texture;
+  osvr::SDL2::Lib lib;
 
   SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
-
-  osvr::SDL2::Lib lib;
 
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
@@ -130,6 +145,10 @@ int main(int argc, char* argv[]) {
   }
 
   glGenTextures(1, &texture);
+#else
+  cv::namedWindow("Window", CV_WINDOW_NORMAL);
+  cv::resizeWindow("Window", window_w, window_h);
+#endif
 
   std::string file_ext = filename.substr(filename.find_last_of(".") + 1);
 
@@ -141,57 +160,86 @@ int main(int argc, char* argv[]) {
   } 
   if (!capture.isOpened()) { std::printf("Failed to open camera!\n"); return EXIT_FAILURE; }
 
+//capture.set(CV_CAP_PROP_FPS, 60);
+//capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
+//capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
+
   cv::Mat capt_frame;
-  std::queue<image_data> image_queue;
 
   capture >> capt_frame;
   if (capt_frame.empty()) { std::printf("Failed to capture a frame!\n"); return EXIT_FAILURE; }
+  cv::Size const frame_size = capt_frame.size();
 
-  image_data capt_image;
+  image_data capt_image, pros_image;
+  control_input event;
+
+  tbb::concurrent_bounded_queue<image_data> image_queue;
+  image_queue.set_capacity(10);
 
   std::vector<bbox_t> result_vec;
 
-//capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
-//capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
+  cv::VideoWriter output_video;
+  if (save_output_videofile) {
+    output_video.open(out_videofile, CV_FOURCC('D','I','V','X'), std::max(35, 30), frame_size, true);
+  }
+
+  bool is_running = true;
+
+  std::thread t_capture;
+  t_capture = std::thread([&]() {
+    while(is_running) {
+      if (image_queue.size() < 10) {
+        capture >> capt_frame;
+        capt_image.frame = capt_frame.clone();
+        image_queue.try_push(capt_image);
+      }
+    }
+  });
 
 /**************
 *  main loop  *
 **************/
 
-  bool is_running = true;
-
   while (is_running) {
 
     frame_start = SDL_GetTicks();
 
-    handleEvents(&is_running);
+    event = getEvents();
 
-    capture >> capt_frame;
-    if (capt_frame.empty()) { std::printf("Video feed has ended\n"); break; }
-
-    capt_image.frame = capt_frame;
-    image_queue.push(capt_image);
+    handleEvents(&is_running, event);
 
     if (!image_queue.empty()) {
+      image_queue.try_pop(pros_image);
+
+      if (pros_image.frame.empty()) { std::printf("Video feed has ended\n"); is_running = false; }
 
 /*detect objects and draw a box around them*/
-      result_vec = detector.detect(image_queue.front().frame);
-      drawBoxes(image_queue.front().frame, result_vec, object_names);
+      result_vec = detector.detect(pros_image.frame);
+      drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
 
-/*update and render video feed*/
-      ctx.update();
-      cv::flip(image_queue.front().frame, image_queue.front().frame, 0);
-      render(display, image_queue.front().frame);
-      SDL_GL_SwapWindow(window.get());
+      if (output_video.isOpened() && save_output_videofile) {
+        output_video << pros_image.frame;
+      }
 
-      image_queue.pop();
+/*update and render video feed*/
+#ifdef ENABLE_OSVR
+      ctx.update();
+      cv::flip(pros_image.frame, pros_image.frame, 0);
+      render(display, pros_image.frame, texture);
+      SDL_GL_SwapWindow(window.get());
+#else
+      cv::imshow("Window", pros_image.frame);
+      cv::waitKey(1);
+#endif
     }
 
 /*slow down to 30FPS if running faster*/
     frame_time = SDL_GetTicks() - frame_start;
     if (FRAME_DELAY > frame_time) { SDL_Delay(FRAME_DELAY - frame_time); }
-  }
+  } //main loop
+
+  if (t_capture.joinable()) { t_capture.join(); }
 
   SDL_Quit();
 
@@ -209,39 +257,45 @@ int main(int argc, char* argv[]) {
 ********************/
 
 /*keyboard input*/
-void handleEvents(bool* running_status) {
-  SDL_Event ev;
-  while (SDL_PollEvent(&ev) != 0) {
-    if (ev.type == SDL_QUIT) {
-      *running_status = false;
-    }
-    else if (ev.type == SDL_KEYDOWN) {
-      switch(ev.key.keysym.sym) {
-        case SDLK_ESCAPE:
-          *running_status = false;
-          break;
-        default:
-          break;
-      }
-    }
+control_input getEvents() {
+  control_input event;
+  if (SDL_PollEvent(&event.ev) >= 0 ) {
+    return event;
   }
 }
 
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame) {
-  display.forEachEye([&frame](osvr::clientkit::Eye eye) {
-    eye.forEachSurface([&frame](osvr::clientkit::Surface surface) {
+void handleEvents(bool* running_status, control_input event) {
+  if (event.ev.type == SDL_QUIT) {
+    *running_status = false;
+  } else if (event.ev.type == SDL_KEYDOWN) {
+    switch(event.ev.key.keysym.sym) {
+      case SDLK_ESCAPE:
+        *running_status = false;
+        break;
+      default:
+        break;
+    }
+  } else if (event.ev.type == SDL_MOUSEBUTTONDOWN) {
+    //std::printf("x%dy%d\n", event.ev.motion.x, event.ev.motion.y);
+  }
+}
+
+#ifdef ENABLE_OSVR
+void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture) {
+  display.forEachEye([&frame, &texture](osvr::clientkit::Eye eye) {
+    eye.forEachSurface([&frame, &texture](osvr::clientkit::Surface surface) {
       auto viewport = surface.getRelativeViewport();
       glViewport(static_cast<GLint>(viewport.left),
                  static_cast<GLint>(viewport.bottom),
                  static_cast<GLsizei>(viewport.width),
                  static_cast<GLsizei>(viewport.height));
       glLoadIdentity();
-      drawToHMD(frame);
+      drawToHMD(frame, texture);
     });
   });
 }
 
-void drawToHMD(cv::Mat img) {
+void drawToHMD(cv::Mat img, GLuint texture) {
   glBindTexture(GL_TEXTURE_2D, texture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -264,6 +318,7 @@ void drawToHMD(cv::Mat img) {
   glDisable(GL_TEXTURE_2D);
   glDeleteTextures(1, &texture);
 }
+#endif
 
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
