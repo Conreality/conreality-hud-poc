@@ -33,6 +33,8 @@ struct image_data {
 
 struct control_input{
   SDL_Event ev;
+  SDL_KeyboardEvent kb_ev;
+  SDL_MouseButtonEvent ms_ev;
 };
 
 control_input getEvents();
@@ -260,6 +262,12 @@ int main(int argc, char* argv[]) {
 control_input getEvents() {
   control_input event;
   if (SDL_PollEvent(&event.ev) >= 0 ) {
+    if (event.ev.type == SDL_KEYDOWN) {
+      event.kb_ev = event.ev.key;
+    }
+    else if (event.ev.type == SDL_MOUSEBUTTONDOWN) {
+      event.ms_ev = event.ev.button;
+    }
     return event;
   }
 }
@@ -267,15 +275,15 @@ control_input getEvents() {
 void handleEvents(bool* running_status, control_input event) {
   if (event.ev.type == SDL_QUIT) {
     *running_status = false;
-  } else if (event.ev.type == SDL_KEYDOWN) {
-    switch(event.ev.key.keysym.sym) {
+  } else if (event.kb_ev.type == SDL_KEYDOWN) {
+    switch(event.kb_ev.keysym.sym) {
       case SDLK_ESCAPE:
         *running_status = false;
         break;
       default:
         break;
     }
-  } else if (event.ev.type == SDL_MOUSEBUTTONDOWN) {
+  } else if (event.ms_ev.type == SDL_MOUSEBUTTONDOWN) {
     //std::printf("x%dy%d\n", event.ev.motion.x, event.ev.motion.y);
   }
 }
