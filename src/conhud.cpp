@@ -1,5 +1,6 @@
-#include <SDL.h>
-#include <SDL_opengl.h>
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -8,6 +9,7 @@
 #include <memory>
 #include <vector>
 #include <iostream>
+#include <chrono>
 #include <iomanip>
 #include <fstream>
 #include <thread>
@@ -22,7 +24,6 @@
 #include <osvr/ClientKit/ClientKit.h>
 #include <osvr/ClientKit/Display.h>
 
-#include "SDL2Helpers.h"
 #endif
 
 #include "yolo_v2_class.hpp"
@@ -32,13 +33,12 @@ struct image_data {
 };
 
 struct control_input{
-  SDL_Event ev;
-  SDL_KeyboardEvent kb_ev;
-  SDL_MouseButtonEvent ms_ev;
+  int key;
+  int action;
 };
 
 control_input getEvents();
-static void handleEvents(bool* running_status, control_input event);
+static void handleEvents(bool* running_status, control_input event, GLFWwindow* window);
 #ifdef ENABLE_OSVR
 void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture);
 void drawToHMD(cv::Mat img, GLuint texture);
@@ -64,14 +64,10 @@ int main(int argc, char* argv[]) {
 //std::string cfg_file = "darknet/cfg/yolo-voc.cfg";
 //std::string weights_file = "darknet/yolo-voc.weights";
 
-/*for brevity*/
-  const auto CENTERED = SDL_WINDOWPOS_CENTERED;
-
 /*used for limiting clock speed*/
   const int FPS = 30;
   const int FRAME_DELAY = 1000 / FPS;
-  int frame_start;
-  int frame_time;
+  auto next_frame = std::chrono::steady_clock::now();
 
 /*screen is set to fullscreen by default*/
   bool fullscreen = 1;
@@ -114,27 +110,43 @@ int main(int argc, char* argv[]) {
 
   auto object_names = objectNamesFromFile(names_file);
 
+
 #ifdef ENABLE_OSVR
-
   GLuint texture;
-  osvr::SDL2::Lib lib;
 
-  SDL_Log("Current display mode is %dx%dpx", window_w, window_h);
-
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-
-  auto window = osvr::SDL2::createWindow("Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_w, window_h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-
-  if (!window) {
-    std::printf("Failed to create window!\n");
+  if (!glfwInit() ) {
+    std::fprintf(stderr, "Failed to initialize GLFW\n");
     return EXIT_FAILURE;
   }
 
-  osvr::SDL2::GLContext glctx(window.get());
-  SDL_GL_SetSwapInterval(1);
+  GLFWwindow* window;
+  window = glfwCreateWindow(window_w, window_h, "Window", NULL, NULL);
+  if (window == NULL) {
+    std::fprintf(stderr, "Failed to open GLFW window.\n");
+    return EXIT_FAILURE;
+  }
 
-  osvr::clientkit::ClientContext ctx("com.osvr.example.SDLOpenGL");
+  glfwMakeContextCurrent(window);
+  glewExperimental = true;
+  if (glewInit() != GLEW_OK) {
+    std::fprintf(stderr, "Failed to initialize GLEW\n");
+    return EXIT_FAILURE;
+  }
+
+  glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+
+  glfwSwapInterval(1);
+
+  glViewport(0, 0, window_w, window_h);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(0.0, window_w, window_h, 0.0, 0.0, 100.0);
+  glMatrixMode(GL_MODELVIEW);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+  glClearDepth(0.0f);
+  glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+
+  osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
   osvr::clientkit::DisplayConfig display(ctx);
 
   if (!display.valid()) {
@@ -146,7 +158,6 @@ int main(int argc, char* argv[]) {
     ctx.update();
   }
 
-  glGenTextures(1, &texture);
 #else
   cv::namedWindow("Window", CV_WINDOW_NORMAL);
   cv::resizeWindow("Window", window_w, window_h);
@@ -204,11 +215,11 @@ int main(int argc, char* argv[]) {
 
   while (is_running) {
 
-    frame_start = SDL_GetTicks();
+    next_frame += std::chrono::milliseconds(FRAME_DELAY);
 
     event = getEvents();
 
-    handleEvents(&is_running, event);
+    handleEvents(&is_running, event, window);
 
     if (!image_queue.empty()) {
       image_queue.try_pop(pros_image);
@@ -220,30 +231,32 @@ int main(int argc, char* argv[]) {
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
 
-      if (output_video.isOpened() && save_output_videofile) {
-        output_video << pros_image.frame;
-      }
-
 /*update and render video feed*/
 #ifdef ENABLE_OSVR
       ctx.update();
-      cv::flip(pros_image.frame, pros_image.frame, 0);
+ //     cv::flip(pros_image.frame, pros_image.frame, 0);
       render(display, pros_image.frame, texture);
-      SDL_GL_SwapWindow(window.get());
+      glfwSwapBuffers(window);
+      glfwPollEvents();
 #else
       cv::imshow("Window", pros_image.frame);
       cv::waitKey(1);
 #endif
+
+    }
+
+    if (output_video.isOpened() && save_output_videofile) {
+      output_video << pros_image.frame;
     }
 
 /*slow down to 30FPS if running faster*/
-    frame_time = SDL_GetTicks() - frame_start;
-    if (FRAME_DELAY > frame_time) { SDL_Delay(FRAME_DELAY - frame_time); }
+    std::this_thread::sleep_until(next_frame);
+
   } //main loop
 
   if (t_capture.joinable()) { t_capture.join(); }
 
-  SDL_Quit();
+  glfwTerminate();
 
   cv::destroyAllWindows();
 
@@ -260,31 +273,11 @@ int main(int argc, char* argv[]) {
 
 /*keyboard input*/
 control_input getEvents() {
-  control_input event;
-  if (SDL_PollEvent(&event.ev) >= 0 ) {
-    if (event.ev.type == SDL_KEYDOWN) {
-      event.kb_ev = event.ev.key;
-    }
-    else if (event.ev.type == SDL_MOUSEBUTTONDOWN) {
-      event.ms_ev = event.ev.button;
-    }
-    return event;
-  }
 }
 
-void handleEvents(bool* running_status, control_input event) {
-  if (event.ev.type == SDL_QUIT) {
+void handleEvents(bool* running_status, control_input event, GLFWwindow* window) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwWindowShouldClose(window) == 1) {
     *running_status = false;
-  } else if (event.kb_ev.type == SDL_KEYDOWN) {
-    switch(event.kb_ev.keysym.sym) {
-      case SDLK_ESCAPE:
-        *running_status = false;
-        break;
-      default:
-        break;
-    }
-  } else if (event.ms_ev.type == SDL_MOUSEBUTTONDOWN) {
-    //std::printf("x%dy%d\n", event.ev.motion.x, event.ev.motion.y);
   }
 }
 
@@ -304,7 +297,13 @@ void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint textu
 }
 
 void drawToHMD(cv::Mat img, GLuint texture) {
+
+  glGenTextures(1, &texture);
+
+  glMatrixMode(GL_MODELVIEW);
+
   glBindTexture(GL_TEXTURE_2D, texture);
+
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -313,14 +312,10 @@ void drawToHMD(cv::Mat img, GLuint texture) {
   glEnable(GL_TEXTURE_2D);
 
   glBegin(GL_QUADS);
-    glTexCoord2d(0.0, 1.0);
-    glVertex2d(-1, 1);
-    glTexCoord2d(0.0, 0.0);
-    glVertex2d(-1, -1);
-    glTexCoord2d(1.0, 0.0);
-    glVertex2d(1, -1);
-    glTexCoord2d(1.0, 1.0);
-    glVertex2d(1, 1);
+    glTexCoord2i(0, 0); glVertex2i(0, 0);
+    glTexCoord2i(0, 1); glVertex2i(0, 1080);
+    glTexCoord2i(1, 1); glVertex2i(1920, 1080);
+    glTexCoord2i(1, 0); glVertex2i(1920, 0);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
