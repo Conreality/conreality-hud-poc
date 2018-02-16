@@ -23,7 +23,6 @@
 #ifdef ENABLE_OSVR
 #include <osvr/ClientKit/ClientKit.h>
 #include <osvr/ClientKit/Display.h>
-
 #endif
 
 #include "yolo_v2_class.hpp"
@@ -32,13 +31,21 @@ struct image_data {
   cv::Mat frame;
 };
 
-struct control_input{
-  int key;
-  int action;
+struct kb_control_input {
+  int key, code, action, modifiers;
 };
 
-control_input getEvents();
-static void handleEvents(bool* running_status, control_input event, GLFWwindow* window);
+struct ms_control_input {
+  int button, action, mods;
+  double xpos, ypos;
+};
+
+tbb::concurrent_bounded_queue<kb_control_input> kb_control_queue;
+tbb::concurrent_bounded_queue<ms_control_input> ms_control_queue;
+
+void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers);
+void handleMouseButton(GLFWwindow* window, int button, int action, int mods);
+static void handleEvents(bool* running_status, bool* flipping);
 #ifdef ENABLE_OSVR
 void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture);
 void drawToHMD(cv::Mat img, GLuint texture);
@@ -134,6 +141,8 @@ int main(int argc, char* argv[]) {
   }
 
   glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+  glfwSetKeyCallback(window, handleKey);
+  glfwSetMouseButtonCallback(window, handleMouseButton);
 
   glfwSwapInterval(1);
 
@@ -184,10 +193,12 @@ int main(int argc, char* argv[]) {
   cv::Size const frame_size = capt_frame.size();
 
   image_data capt_image, pros_image;
-  control_input event;
 
   tbb::concurrent_bounded_queue<image_data> image_queue;
   image_queue.set_capacity(10);
+
+  kb_control_queue.set_capacity(5);
+  ms_control_queue.set_capacity(5);
 
   std::vector<bbox_t> result_vec;
 
@@ -197,6 +208,7 @@ int main(int argc, char* argv[]) {
   }
 
   bool is_running = true;
+  bool to_flip = false;
 
   std::thread t_capture;
   t_capture = std::thread([&]() {
@@ -217,9 +229,7 @@ int main(int argc, char* argv[]) {
 
     next_frame += std::chrono::milliseconds(FRAME_DELAY);
 
-    event = getEvents();
-
-    handleEvents(&is_running, event, window);
+    handleEvents(&is_running, &to_flip);
 
     if (!image_queue.empty()) {
       image_queue.try_pop(pros_image);
@@ -231,10 +241,11 @@ int main(int argc, char* argv[]) {
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
 
+      if (to_flip) { cv::flip(pros_image.frame, pros_image.frame, 0); }
+
 /*update and render video feed*/
 #ifdef ENABLE_OSVR
       ctx.update();
- //     cv::flip(pros_image.frame, pros_image.frame, 0);
       render(display, pros_image.frame, texture);
       glfwSwapBuffers(window);
       glfwPollEvents();
@@ -242,11 +253,9 @@ int main(int argc, char* argv[]) {
       cv::imshow("Window", pros_image.frame);
       cv::waitKey(1);
 #endif
-
-    }
-
-    if (output_video.isOpened() && save_output_videofile) {
-      output_video << pros_image.frame;
+      if (output_video.isOpened() && save_output_videofile) {
+        output_video << pros_image.frame;
+      }
     }
 
 /*slow down to 30FPS if running faster*/
@@ -272,12 +281,40 @@ int main(int argc, char* argv[]) {
 ********************/
 
 /*keyboard input*/
-control_input getEvents() {
+void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers) {
+  kb_control_queue.try_emplace(kb_control_input{key, code, action, modifiers});
 }
 
-void handleEvents(bool* running_status, control_input event, GLFWwindow* window) {
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS || glfwWindowShouldClose(window) == 1) {
-    *running_status = false;
+void handleMouseButton(GLFWwindow* window, int button, int action, int mods) {
+  double xpos, ypos;
+  glfwGetCursorPos(window, &xpos, &ypos);
+  ms_control_queue.try_emplace(ms_control_input{button, action, mods, xpos, ypos});
+}
+
+void handleEvents(bool* running_status, bool* flipping) {
+
+  kb_control_input kb_event;
+  kb_control_queue.try_pop(kb_event);
+
+  if (kb_event.action == GLFW_PRESS) {
+//    std::printf("%d \n", kb_event.key);
+    switch (kb_event.key) {
+      case GLFW_KEY_ESCAPE:
+        *running_status = false;
+        break;
+      case GLFW_KEY_F:
+        *flipping = !(*flipping);
+        break;
+      default:
+        break;
+    }
+  }
+
+  ms_control_input ms_event;
+  ms_control_queue.try_pop(ms_event);
+
+  if (ms_event.action == GLFW_PRESS) {
+//    std::cout << ms_event.xpos << ", " << ms_event.ypos << std::endl;
   }
 }
 

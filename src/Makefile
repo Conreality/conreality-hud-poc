@@ -2,8 +2,8 @@ CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so -DENABL
 
 PANDOC   ?= pandoc
 
-CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags opencv glu gl glew glfw3 libdrm jsoncpp)
-LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs opencv glu gl glew glfw3 libdrm jsoncpp) -losvrClientKit -lpthread
+CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags opencv glu gl glew glfw3 libdrm jsoncpp tbb)
+LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs opencv glu gl glew glfw3 libdrm jsoncpp tbb) -losvrClientKit -lpthread
 PACKAGE  := conhud
 VERSION  := $(shell cat ../VERSION)
 
