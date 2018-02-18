@@ -40,16 +40,29 @@ struct ms_control_input {
   double xpos, ypos;
 };
 
-tbb::concurrent_bounded_queue<kb_control_input> kb_control_queue;
-tbb::concurrent_bounded_queue<ms_control_input> ms_control_queue;
+struct {
+
+  struct {
+    bool is_running = true;
+    bool show_items = false;
+    bool flip_image = false;
+    bool fullscreen = true;
+    bool save_output_videofile = false;
+  } flags;
+
+  tbb::concurrent_bounded_queue<kb_control_input> kb_control_queue;
+  tbb::concurrent_bounded_queue<ms_control_input> ms_control_queue;
+} global;
 
 void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers);
 void handleMouseButton(GLFWwindow* window, int button, int action, int mods);
-static void handleEvents(bool* running_status, bool* flipping);
+static void handleEvents();
 #ifdef ENABLE_OSVR
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture);
-void drawToHMD(cv::Mat img, GLuint texture);
+void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h);
 #endif
+void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h);
+void drawSquare(float x, float y, int w, int h);
+void drawCircle(float cx, float cy, float r);
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
 cv::Scalar objectIdToColor(int obj_id);
@@ -76,13 +89,11 @@ int main(int argc, char* argv[]) {
   const int FRAME_DELAY = 1000 / FPS;
   auto next_frame = std::chrono::steady_clock::now();
 
-/*screen is set to fullscreen by default*/
-  bool fullscreen = 1;
+/*set default screen size*/
   int window_h = 1080;
   int window_w = 1920;
 
   std::string out_videofile = "result.avi";
-  bool save_output_videofile = false;
 
   int c;
   while ((c = getopt(argc, argv, "hrs:w")) != -1) {
@@ -91,13 +102,13 @@ int main(int argc, char* argv[]) {
         printHelp();
         return EXIT_SUCCESS;
       case 'r': //record
-        save_output_videofile = true;
+        global.flags.save_output_videofile = true;
         break;
       case 's': //source
         filename = optarg;
         break;
       case 'w': //windowed
-        fullscreen = 0;
+        global.flags.fullscreen = 0;
         window_h = 504; //16:9
         window_w = 896;
         break;
@@ -117,8 +128,6 @@ int main(int argc, char* argv[]) {
 
   auto object_names = objectNamesFromFile(names_file);
 
-
-#ifdef ENABLE_OSVR
   GLuint texture;
 
   if (!glfwInit() ) {
@@ -155,6 +164,7 @@ int main(int argc, char* argv[]) {
   glClearDepth(0.0f);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
+#ifdef ENABLE_OSVR
   osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
   osvr::clientkit::DisplayConfig display(ctx);
 
@@ -166,10 +176,6 @@ int main(int argc, char* argv[]) {
   while (!display.checkStartup()) {
     ctx.update();
   }
-
-#else
-  cv::namedWindow("Window", CV_WINDOW_NORMAL);
-  cv::resizeWindow("Window", window_w, window_h);
 #endif
 
   std::string file_ext = filename.substr(filename.find_last_of(".") + 1);
@@ -197,22 +203,19 @@ int main(int argc, char* argv[]) {
   tbb::concurrent_bounded_queue<image_data> image_queue;
   image_queue.set_capacity(10);
 
-  kb_control_queue.set_capacity(5);
-  ms_control_queue.set_capacity(5);
+  global.kb_control_queue.set_capacity(5);
+  global.ms_control_queue.set_capacity(5);
 
   std::vector<bbox_t> result_vec;
 
   cv::VideoWriter output_video;
-  if (save_output_videofile) {
+  if (global.flags.save_output_videofile) {
     output_video.open(out_videofile, CV_FOURCC('D','I','V','X'), std::max(35, 30), frame_size, true);
   }
 
-  bool is_running = true;
-  bool to_flip = false;
-
   std::thread t_capture;
   t_capture = std::thread([&]() {
-    while(is_running) {
+    while(global.flags.is_running) {
       if (image_queue.size() < 10) {
         capture >> capt_frame;
         capt_image.frame = capt_frame.clone();
@@ -225,35 +228,40 @@ int main(int argc, char* argv[]) {
 *  main loop  *
 **************/
 
-  while (is_running) {
+  while (global.flags.is_running) {
 
     next_frame += std::chrono::milliseconds(FRAME_DELAY);
 
-    handleEvents(&is_running, &to_flip);
+    handleEvents();
 
     if (!image_queue.empty()) {
       image_queue.try_pop(pros_image);
 
-      if (pros_image.frame.empty()) { std::printf("Video feed has ended\n"); is_running = false; }
+      if (pros_image.frame.empty()) { std::printf("Video feed has ended\n"); global.flags.is_running = false; }
 
 /*detect objects and draw a box around them*/
       result_vec = detector.detect(pros_image.frame);
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
 
-      if (to_flip) { cv::flip(pros_image.frame, pros_image.frame, 0); }
+      if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
 /*update and render video feed*/
 #ifdef ENABLE_OSVR
       ctx.update();
-      render(display, pros_image.frame, texture);
+      if (global.flags.fullscreen) { render(display, pros_image.frame, texture, window_w, window_h); }
+      else {
+        glViewport(0, 0, window_w, window_h);
+        drawToGLFW(pros_image.frame, texture, window_w, window_h);
+      }
+#else
+      glViewport(0, 0, window_w, window_h);
+      drawToGLFW(pros_image.frame, texture, window_w, window_h);
+#endif
       glfwSwapBuffers(window);
       glfwPollEvents();
-#else
-      cv::imshow("Window", pros_image.frame);
-      cv::waitKey(1);
-#endif
-      if (output_video.isOpened() && save_output_videofile) {
+
+      if (output_video.isOpened() && global.flags.save_output_videofile) {
         output_video << pros_image.frame;
       }
     }
@@ -282,28 +290,31 @@ int main(int argc, char* argv[]) {
 
 /*keyboard input*/
 void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers) {
-  kb_control_queue.try_emplace(kb_control_input{key, code, action, modifiers});
+  global.kb_control_queue.try_emplace(kb_control_input{key, code, action, modifiers});
 }
 
 void handleMouseButton(GLFWwindow* window, int button, int action, int mods) {
   double xpos, ypos;
   glfwGetCursorPos(window, &xpos, &ypos);
-  ms_control_queue.try_emplace(ms_control_input{button, action, mods, xpos, ypos});
+  global.ms_control_queue.try_emplace(ms_control_input{button, action, mods, xpos, ypos});
 }
 
-void handleEvents(bool* running_status, bool* flipping) {
+void handleEvents() {
 
   kb_control_input kb_event;
-  kb_control_queue.try_pop(kb_event);
+  global.kb_control_queue.try_pop(kb_event);
 
   if (kb_event.action == GLFW_PRESS) {
 //    std::printf("%d \n", kb_event.key);
     switch (kb_event.key) {
       case GLFW_KEY_ESCAPE:
-        *running_status = false;
+        global.flags.is_running = false;
         break;
       case GLFW_KEY_F:
-        *flipping = !(*flipping);
+        global.flags.flip_image = !(global.flags.flip_image);
+        break;
+      case GLFW_KEY_I:
+        global.flags.show_items = !(global.flags.show_items);
         break;
       default:
         break;
@@ -311,7 +322,7 @@ void handleEvents(bool* running_status, bool* flipping) {
   }
 
   ms_control_input ms_event;
-  ms_control_queue.try_pop(ms_event);
+  global.ms_control_queue.try_pop(ms_event);
 
   if (ms_event.action == GLFW_PRESS) {
 //    std::cout << ms_event.xpos << ", " << ms_event.ypos << std::endl;
@@ -319,46 +330,83 @@ void handleEvents(bool* running_status, bool* flipping) {
 }
 
 #ifdef ENABLE_OSVR
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture) {
-  display.forEachEye([&frame, &texture](osvr::clientkit::Eye eye) {
-    eye.forEachSurface([&frame, &texture](osvr::clientkit::Surface surface) {
+void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h) {
+  display.forEachEye([&](osvr::clientkit::Eye eye) {
+    eye.forEachSurface([&](osvr::clientkit::Surface surface) {
+      uint8_t eye_number = eye.getEyeID();
       auto viewport = surface.getRelativeViewport();
       glViewport(static_cast<GLint>(viewport.left),
                  static_cast<GLint>(viewport.bottom),
                  static_cast<GLsizei>(viewport.width),
                  static_cast<GLsizei>(viewport.height));
-      glLoadIdentity();
-      drawToHMD(frame, texture);
+      drawToGLFW(frame, texture, window_w, window_h);
+      if (global.flags.show_items) {
+        if (eye_number == 0) { drawSquare(window_w/2.0f, window_h/2.0f, 200, 150); }
+        if (eye_number == 1) { drawCircle(window_w/2.0f, window_h/2.0f, 100.0f); }
+      }
     });
   });
 }
+#endif
 
-void drawToHMD(cv::Mat img, GLuint texture) {
+void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h) {
 
+  glLoadIdentity();
   glGenTextures(1, &texture);
-
   glMatrixMode(GL_MODELVIEW);
-
   glBindTexture(GL_TEXTURE_2D, texture);
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.size().width, img.size().height, 0, GL_BGR, GL_UNSIGNED_BYTE, img.data);
 
   glEnable(GL_TEXTURE_2D);
 
+  glColor4f(1.0f, 1.0f, 1.0f, 0.0f);
+
   glBegin(GL_QUADS);
     glTexCoord2i(0, 0); glVertex2i(0, 0);
-    glTexCoord2i(0, 1); glVertex2i(0, 1080);
-    glTexCoord2i(1, 1); glVertex2i(1920, 1080);
-    glTexCoord2i(1, 0); glVertex2i(1920, 0);
+    glTexCoord2i(0, 1); glVertex2i(0, window_h);
+    glTexCoord2i(1, 1); glVertex2i(window_w, window_h);
+    glTexCoord2i(1, 0); glVertex2i(window_w, 0);
   glEnd();
 
   glDisable(GL_TEXTURE_2D);
   glDeleteTextures(1, &texture);
 }
-#endif
+
+void drawSquare(float x, float y, int w, int h) {
+  x -= h/2; //to center the square
+  y -= w/2;
+  glBegin(GL_POLYGON);
+  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
+  glVertex3f(x,y,0);
+  glVertex3f(x+w,y,0);
+  glVertex3f(x+w,y+h,0);
+  glVertex3f(x,y+h,0);
+  glEnd();
+}
+
+void drawCircle(float x, float y, float radius) {
+
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+  glTranslatef(x, y, 0.0f);
+  static const int circle_points = 100;
+  static const float angle = 2.0f * 3.1416f / circle_points;
+
+  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
+  glBegin(GL_POLYGON);
+  double angle1 = 0.0;
+  glVertex2d(radius * cos(0.0) , radius * sin(0.0));
+  for (int i=0; i < circle_points; i++) {
+    glVertex2d(radius * cos(angle1), radius *sin(angle1));
+    angle1 += angle;
+  }
+  glEnd();
+  glPopMatrix();
+}
 
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
