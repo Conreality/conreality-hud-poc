@@ -1,3 +1,5 @@
+/* This is free and unencumbered software released into the public domain. */
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
