@@ -1,17 +1,7 @@
 CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so -DENABLE_OSVR
 
-PANDOC   ?= pandoc
-
 CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags opencv glu gl glew glfw3 libdrm jsoncpp tbb)
 LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs opencv glu gl glew glfw3 libdrm jsoncpp tbb) -losvrClientKit -lpthread
-PACKAGE  := conhud
-VERSION  := $(shell cat ../VERSION)
-
-SOURCES  := conhud.cpp
-TARGETS  := conhud
-
-%.html: %.rst
-	$(PANDOC) -o $@ -t html5 -s $<
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -o $@ -c $<
@@ -21,29 +11,11 @@ TARGETS  := conhud
 
 conhud: conhud.o
 
-all: build
-
-build: $(TARGETS)
-
-check: $(TARGETS)
-	@echo "not implemented"; exit 2 # TODO
-
-dist:
-	@echo "not implemented"; exit 2 # TODO
-
-install:
-	@echo "not implemented"; exit 2 # TODO
-
-uninstall:
-	@echo "not implemented"; exit 2 # TODO
+all: conhud
 
 clean:
-	@rm -f *~ *.o $(TARGETS)
+	@rm -f *~ *.o conhud
 
-distclean: clean
-
-mostlyclean: clean
-
-.PHONY: check dist install clean distclean mostlyclean
+.PHONY: clean
 .SECONDARY:
 .SUFFIXES:
