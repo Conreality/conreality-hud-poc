@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
      capture.open(filename);
   } else if (isdigit(filename[0])) {
     capture.open(stoi(filename));
-  } 
+  }
   if (!capture.isOpened()) { std::printf("Failed to open camera!\n"); return EXIT_FAILURE; }
 
 //capture.set(CV_CAP_PROP_FPS, 60);

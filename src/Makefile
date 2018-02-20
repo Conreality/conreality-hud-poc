@@ -24,7 +24,6 @@ conhud: conhud.o
 all: build
 
 build: $(TARGETS)
-    
 
 check: $(TARGETS)
 	@echo "not implemented"; exit 2 # TODO
