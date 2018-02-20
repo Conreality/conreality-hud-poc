@@ -1,7 +1,7 @@
-CXX      := c++ -std=c++14 -I/usr/include/osvr /usr/local/lib/darknet.so -DENABLE_OSVR
+CXX      := c++ -std=c++14
 
-CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags opencv glu gl glew glfw3 libdrm jsoncpp tbb)
-LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs opencv glu gl glew glfw3 libdrm jsoncpp tbb) -losvrClientKit -lpthread
+CPPFLAGS := $(CPPFLAGS) $(shell pkg-config --cflags opencv glu gl glew glfw3 libdrm jsoncpp tbb) -I/usr/include/osvr -DENABLE_OSVR
+LDFLAGS  := $(LDFLAGS) $(shell pkg-config --libs opencv glu gl glew glfw3 libdrm jsoncpp tbb) -losvrClientKit -lpthread /usr/local/lib/darknet.so
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -o $@ -c $<
