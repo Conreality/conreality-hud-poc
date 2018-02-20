@@ -1,5 +1,11 @@
 /* This is free and unencumbered software released into the public domain. */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include "version.h"
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
