@@ -121,7 +121,12 @@ AS_CASE([$host_os],
   [openbsd*], [host_type="posix" host_os="bsd"],
   [AC_MSG_ERROR([unsupported OS platform: $host_os])])
 AM_CPPFLAGS="$AM_CPPFLAGS -I\$(top_srcdir)/src"
+AM_CXXFLAGS="$AM_CXXFLAGS -Wall -Wextra -pipe"
+AM_LDFLAGS="$AM_LDFLAGS"
+AS_CASE([$host_os], [linux*], [AM_LDFLAGS="$AM_LDFLAGS -pthread"], [])
 AC_SUBST([AM_CPPFLAGS])
+AC_SUBST([AM_CXXFLAGS])
+AC_SUBST([AM_LDFLAGS])
 
 dnl Check for library functions:
 
