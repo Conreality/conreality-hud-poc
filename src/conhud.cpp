@@ -33,7 +33,9 @@
 #include <osvr/ClientKit/Display.h>
 #endif
 
+#ifndef DISABLE_DARKNET
 #include "yolo_v2_class.hpp"
+#endif
 
 struct image_data {
   cv::Mat frame;
@@ -71,8 +73,10 @@ void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint textu
 void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h);
 void drawSquare(float x, float y, int w, int h);
 void drawCircle(float cx, float cy, float r);
+#ifndef DISABLE_DARKNET
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
+#endif
 cv::Scalar objectIdToColor(int obj_id);
 std::vector<std::string> objectNamesFromFile(std::string const filename);
 void printHelp();
@@ -132,7 +136,9 @@ int main(int argc, char* argv[]) {
     }
   }
 
+#ifndef DISABLE_DARKNET
   Detector detector(cfg_file, weights_file);
+#endif
 
   auto object_names = objectNamesFromFile(names_file);
 
@@ -214,8 +220,6 @@ int main(int argc, char* argv[]) {
   global.kb_control_queue.set_capacity(5);
   global.ms_control_queue.set_capacity(5);
 
-  std::vector<bbox_t> result_vec;
-
   cv::VideoWriter output_video;
   if (global.flags.save_output_videofile) {
     output_video.open(out_videofile, CV_FOURCC('D','I','V','X'), std::max(35, 30), frame_size, true);
@@ -247,10 +251,12 @@ int main(int argc, char* argv[]) {
 
       if (pros_image.frame.empty()) { std::printf("Video feed has ended\n"); global.flags.is_running = false; }
 
+#ifndef DISABLE_DARKNET
 /*detect objects and draw a box around them*/
-      result_vec = detector.detect(pros_image.frame);
+      std::vector<bbox_t> result_vec = detector.detect(pros_image.frame);
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
+#endif
 
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
@@ -416,6 +422,7 @@ void drawCircle(float x, float y, float radius) {
   glPopMatrix();
 }
 
+#ifndef DISABLE_DARKNET
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
   for (auto &i : result_vec) {
@@ -431,6 +438,7 @@ void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std:
     }
   }
 }
+#endif
 
 cv::Scalar objectIdToColor(int obj_id) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
@@ -441,6 +449,7 @@ cv::Scalar objectIdToColor(int obj_id) {
   return color;
 }
 
+#ifndef DISABLE_DARKNET
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names) {
   for (auto &i : result_vec) {
     if (object_names.size() > i.obj_id) { std::cout << object_names[i.obj_id] << " - "; }
@@ -449,6 +458,7 @@ void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::st
       << std::setprecision(3) << ", prob = " << i.prob << std::endl;
   }
 }
+#endif
 
 std::vector<std::string> objectNamesFromFile(std::string const filename) {
   std::ifstream file(filename);
