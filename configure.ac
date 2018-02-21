@@ -4,8 +4,8 @@ dnl Process this file with `autoconf` to produce a configure script.
 dnl
 dnl This is free and unencumbered software released into the public domain.
 
-dnl The build system requires M4, Autoconf, Automake, and GNU Make.
-dnl It does _not_ and _should_ not require GNU Libtool nor pkg-config.
+dnl The build system requires Autoconf, Automake, GNU Make, and pkg-config.
+dnl It does _not_ and _should_ not require GNU Libtool.
 AC_PREREQ([2.68])
 
 dnl Define version information:
@@ -66,11 +66,35 @@ dnl Check for programs:
 AC_PROG_CXX(clang++ g++ c++)
 AC_PROG_CXXCPP
 AX_CXX_COMPILE_STDCXX([14], [noext])
-AC_LANG([C++])
+PKG_PROG_PKG_CONFIG([0.29])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 AC_CHECK_PROGS([PANDOC], [pandoc])
+AC_LANG([C++])
 
 dnl Check for libraries:
+PKG_CHECK_MODULES([OPENCV], [opencv >= 3],
+  [AC_DEFINE([HAVE_OPENCV], [1], [Define to 1 if you have OpenCV 3+.])])
+AM_CONDITIONAL([HAVE_OPENCV], [test "x$OPENCV_LIBS" != "x"])
+
+PKG_CHECK_MODULES([GLEW], [glew],
+  [AC_DEFINE([HAVE_GLEW], [1], [Define to 1 if you have GLEW (OpenGL Extension Wrangler Library).])])
+AM_CONDITIONAL([HAVE_GLEW], [test "x$GLEW_LIBS" != "x"])
+
+PKG_CHECK_MODULES([GLFW], [glfw3],
+  [AC_DEFINE([HAVE_GLFW], [1], [Define to 1 if you have GLFW3.])])
+AM_CONDITIONAL([HAVE_GLFW], [test "x$GLFW_LIBS" != "x"])
+
+PKG_CHECK_MODULES([LIBDRM], [libdrm],
+  [AC_DEFINE([HAVE_LIBDRM], [1], [Define to 1 if you have libdrm.])])
+AM_CONDITIONAL([HAVE_LIBDRM], [test "x$LIBDRM_LIBS" != "x"])
+
+PKG_CHECK_MODULES([JSONCPP], [jsoncpp >= 1.7],
+  [AC_DEFINE([HAVE_JSONCPP], [1], [Define to 1 if you have JsonCpp.])])
+AM_CONDITIONAL([HAVE_JSONCPP], [test "x$JSONCPP_LIBS" != "x"])
+
+PKG_CHECK_MODULES([TBB], [tbb],
+  [AC_DEFINE([HAVE_TBB], [1], [Define to 1 if you have Intel TBB (Threading Building Blocks).])])
+AM_CONDITIONAL([HAVE_TBB], [test "x$TBB_LIBS" != "x"])
 
 dnl Check for header files:
 
