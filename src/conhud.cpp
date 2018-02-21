@@ -28,7 +28,7 @@
 #include <unistd.h>
 #include <tbb/concurrent_queue.h>
 
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
 #include <osvr/ClientKit/ClientKit.h>
 #include <osvr/ClientKit/Display.h>
 #endif
@@ -65,7 +65,7 @@ struct {
 void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers);
 void handleMouseButton(GLFWwindow* window, int button, int action, int mods);
 static void handleEvents();
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
 void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h);
 #endif
 void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h);
@@ -172,7 +172,7 @@ int main(int argc, char* argv[]) {
   glClearDepth(0.0f);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
   osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
   osvr::clientkit::DisplayConfig display(ctx);
 
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
 /*update and render video feed*/
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
       ctx.update();
       if (global.flags.fullscreen) { render(display, pros_image.frame, texture, window_w, window_h); }
       else {
@@ -337,7 +337,7 @@ void handleEvents() {
   }
 }
 
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
 void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h) {
   display.forEachEye([&](osvr::clientkit::Eye eye) {
     eye.forEachSurface([&](osvr::clientkit::Surface surface) {
