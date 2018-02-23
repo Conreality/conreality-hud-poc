@@ -54,6 +54,8 @@ struct {
     bool is_running = true;
     bool show_items = false;
     bool flip_image = false;
+    bool edge_filter = false;
+    bool edge_filter_ext = false;
     bool fullscreen = true;
     bool save_output_videofile = false;
   } flags;
@@ -72,6 +74,7 @@ void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h);
 void drawSquare(float x, float y, int w, int h);
 void drawCircle(float cx, float cy, float r);
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
+void edgeFilter(cv::Mat* image);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
 cv::Scalar objectIdToColor(int obj_id);
 std::vector<std::string> objectNamesFromFile(std::string const filename);
@@ -201,6 +204,7 @@ int main(int argc, char* argv[]) {
 //capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
 
   cv::Mat capt_frame;
+  cv::Mat gray_image, contours;
 
   capture >> capt_frame;
   if (capt_frame.empty()) { std::printf("Failed to capture a frame!\n"); return EXIT_FAILURE; }
@@ -251,6 +255,8 @@ int main(int argc, char* argv[]) {
       result_vec = detector.detect(pros_image.frame);
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
+
+      if (global.flags.edge_filter) { edgeFilter(&pros_image.frame); }
 
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
@@ -318,6 +324,10 @@ void handleEvents() {
       case GLFW_KEY_ESCAPE:
         global.flags.is_running = false;
         break;
+      case GLFW_KEY_E:
+        if (kb_event.modifiers == GLFW_MOD_SHIFT) { global.flags.edge_filter_ext = !(global.flags.edge_filter_ext); break; }
+        global.flags.edge_filter = !(global.flags.edge_filter);
+        break;
       case GLFW_KEY_F:
         global.flags.flip_image = !(global.flags.flip_image);
         break;
@@ -339,11 +349,13 @@ void handleEvents() {
 
 #ifdef ENABLE_OSVR
 void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h) {
+  glClearColor(0,0,0,1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   display.forEachEye([&](osvr::clientkit::Eye eye) {
     eye.forEachSurface([&](osvr::clientkit::Surface surface) {
       uint8_t eye_number = eye.getEyeID();
       auto viewport = surface.getRelativeViewport();
-      glViewport(static_cast<GLint>(viewport.left),
+      glViewport(static_cast<GLint>(viewport.left)+120, //temporary fix
                  static_cast<GLint>(viewport.bottom),
                  static_cast<GLsizei>(viewport.width),
                  static_cast<GLsizei>(viewport.height));
@@ -429,6 +441,26 @@ void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std:
       cv::rectangle(mat_img, cv::Point2f(std::max((int)i.x - 3, 0), std::max((int)i.y - 30, 0)), cv::Point2f(std::min((int)i.x + max_width, mat_img.cols - 1), std::min((int)i.y, mat_img.rows - 1)), color, CV_FILLED, 8, 0);
       putText(mat_img, obj_name, cv::Point2f(i.x, i.y -10), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(0,0,0), 2);
     }
+  }
+}
+
+void edgeFilter(cv::Mat* image) {
+
+  cv::Mat src_gray, canny_output;
+  std::vector<std::vector<cv::Point>> contours;
+  std::vector<cv::Vec4i> hierarchy;
+  cvtColor(*image, src_gray, CV_BGR2GRAY);
+  cv::blur(src_gray, src_gray, cv::Size(3,3));
+
+  cv::Canny(src_gray, canny_output, 30, 120, 3);
+
+  cv::findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
+
+  if (global.flags.edge_filter_ext) { *image = cv::Scalar(0,0,0); }
+
+  for (int i = 0; i < contours.size(); i++) {
+    cv::Scalar color = cv::Scalar(0,255,0);
+    cv::drawContours(*image, contours, i, color, 1, 8, hierarchy, 0, cv::Point());
   }
 }
 
