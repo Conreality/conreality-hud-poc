@@ -6,76 +6,27 @@
 
 #include "version.h"
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/opencv.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <cstdio>
-#include <cstdlib>
-#include <memory>
-#include <vector>
-#include <iostream>
-#include <chrono>
-#include <iomanip>
-#include <fstream>
-#include <thread>
-#include <future>
-#include <queue>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <tbb/concurrent_queue.h>
-
-#ifdef ENABLE_OSVR
-#include <osvr/ClientKit/ClientKit.h>
-#include <osvr/ClientKit/Display.h>
+#ifndef DISABLE_DARKNET
+#include "yolo_v2_class.hpp"
 #endif
 
-#include "yolo_v2_class.hpp"
+#include "globals.h"
+#include "rendering.h"
 
 struct image_data {
   cv::Mat frame;
 };
 
-struct kb_control_input {
-  int key, code, action, modifiers;
-};
-
-struct ms_control_input {
-  int button, action, mods;
-  double xpos, ypos;
-};
-
-struct {
-
-  struct {
-    bool is_running = true;
-    bool show_items = false;
-    bool flip_image = false;
-    bool edge_filter = false;
-    bool edge_filter_ext = false;
-    bool fullscreen = true;
-    bool save_output_videofile = false;
-  } flags;
-
-  tbb::concurrent_bounded_queue<kb_control_input> kb_control_queue;
-  tbb::concurrent_bounded_queue<ms_control_input> ms_control_queue;
-} global;
+Globals global;
 
 void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers);
 void handleMouseButton(GLFWwindow* window, int button, int action, int mods);
 static void handleEvents();
-#ifdef ENABLE_OSVR
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h);
-#endif
-void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h);
-void drawSquare(float x, float y, int w, int h);
-void drawCircle(float cx, float cy, float r);
+#ifndef DISABLE_DARKNET
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
 void edgeFilter(cv::Mat* image);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
+#endif
 cv::Scalar objectIdToColor(int obj_id);
 std::vector<std::string> objectNamesFromFile(std::string const filename);
 void printHelp();
@@ -135,7 +86,9 @@ int main(int argc, char* argv[]) {
     }
   }
 
+#ifndef DISABLE_DARKNET
   Detector detector(cfg_file, weights_file);
+#endif
 
   auto object_names = objectNamesFromFile(names_file);
 
@@ -175,7 +128,7 @@ int main(int argc, char* argv[]) {
   glClearDepth(0.0f);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
   osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
   osvr::clientkit::DisplayConfig display(ctx);
 
@@ -218,8 +171,6 @@ int main(int argc, char* argv[]) {
   global.kb_control_queue.set_capacity(5);
   global.ms_control_queue.set_capacity(5);
 
-  std::vector<bbox_t> result_vec;
-
   cv::VideoWriter output_video;
   if (global.flags.save_output_videofile) {
     output_video.open(out_videofile, CV_FOURCC('D','I','V','X'), std::max(35, 30), frame_size, true);
@@ -251,17 +202,19 @@ int main(int argc, char* argv[]) {
 
       if (pros_image.frame.empty()) { std::printf("Video feed has ended\n"); global.flags.is_running = false; }
 
+#ifndef DISABLE_DARKNET
 /*detect objects and draw a box around them*/
-      result_vec = detector.detect(pros_image.frame);
+      std::vector<bbox_t> result_vec = detector.detect(pros_image.frame);
       drawBoxes(pros_image.frame, result_vec, object_names);
 //    showConsoleResult(result_vec, object_names);    //uncomment this if you want console feedback
+#endif
 
       if (global.flags.edge_filter) { edgeFilter(&pros_image.frame); }
 
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
 /*update and render video feed*/
-#ifdef ENABLE_OSVR
+#ifndef DISABLE_OSVR
       ctx.update();
       if (global.flags.fullscreen) { render(display, pros_image.frame, texture, window_w, window_h); }
       else {
@@ -347,87 +300,7 @@ void handleEvents() {
   }
 }
 
-#ifdef ENABLE_OSVR
-void render(osvr::clientkit::DisplayConfig &display, cv::Mat frame, GLuint texture, int window_w, int window_h) {
-  glClearColor(0,0,0,1.0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  display.forEachEye([&](osvr::clientkit::Eye eye) {
-    eye.forEachSurface([&](osvr::clientkit::Surface surface) {
-      uint8_t eye_number = eye.getEyeID();
-      auto viewport = surface.getRelativeViewport();
-      glViewport(static_cast<GLint>(viewport.left)+120, //temporary fix
-                 static_cast<GLint>(viewport.bottom),
-                 static_cast<GLsizei>(viewport.width),
-                 static_cast<GLsizei>(viewport.height));
-      drawToGLFW(frame, texture, window_w, window_h);
-      if (global.flags.show_items) {
-        if (eye_number == 0) { drawSquare(window_w/2.0f, window_h/2.0f, 200, 150); }
-        if (eye_number == 1) { drawCircle(window_w/2.0f, window_h/2.0f, 100.0f); }
-      }
-    });
-  });
-}
-#endif
-
-void drawToGLFW(cv::Mat img, GLuint texture, int window_w, int window_h) {
-
-  glLoadIdentity();
-  glGenTextures(1, &texture);
-  glMatrixMode(GL_MODELVIEW);
-  glBindTexture(GL_TEXTURE_2D, texture);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.size().width, img.size().height, 0, GL_BGR, GL_UNSIGNED_BYTE, img.data);
-
-  glEnable(GL_TEXTURE_2D);
-
-  glColor4f(1.0f, 1.0f, 1.0f, 0.0f);
-
-  glBegin(GL_QUADS);
-    glTexCoord2i(0, 0); glVertex2i(0, 0);
-    glTexCoord2i(0, 1); glVertex2i(0, window_h);
-    glTexCoord2i(1, 1); glVertex2i(window_w, window_h);
-    glTexCoord2i(1, 0); glVertex2i(window_w, 0);
-  glEnd();
-
-  glDisable(GL_TEXTURE_2D);
-  glDeleteTextures(1, &texture);
-}
-
-void drawSquare(float x, float y, int w, int h) {
-  x -= h/2; //to center the square
-  y -= w/2;
-  glBegin(GL_POLYGON);
-  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
-  glVertex3f(x,y,0);
-  glVertex3f(x+w,y,0);
-  glVertex3f(x+w,y+h,0);
-  glVertex3f(x,y+h,0);
-  glEnd();
-}
-
-void drawCircle(float x, float y, float radius) {
-
-  glMatrixMode(GL_MODELVIEW);
-  glPushMatrix();
-  glLoadIdentity();
-  glTranslatef(x, y, 0.0f);
-  static const int circle_points = 100;
-  static const float angle = 2.0f * 3.1416f / circle_points;
-
-  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
-  glBegin(GL_POLYGON);
-  double angle1 = 0.0;
-  glVertex2d(radius * cos(0.0) , radius * sin(0.0));
-  for (int i=0; i < circle_points; i++) {
-    glVertex2d(radius * cos(angle1), radius *sin(angle1));
-    angle1 += angle;
-  }
-  glEnd();
-  glPopMatrix();
-}
-
+#ifndef DISABLE_DARKNET
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
   for (auto &i : result_vec) {
@@ -443,6 +316,7 @@ void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std:
     }
   }
 }
+#endif
 
 void edgeFilter(cv::Mat* image) {
 
@@ -473,6 +347,7 @@ cv::Scalar objectIdToColor(int obj_id) {
   return color;
 }
 
+#ifndef DISABLE_DARKNET
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names) {
   for (auto &i : result_vec) {
     if (object_names.size() > i.obj_id) { std::cout << object_names[i.obj_id] << " - "; }
@@ -481,6 +356,7 @@ void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::st
       << std::setprecision(3) << ", prob = " << i.prob << std::endl;
   }
 }
+#endif
 
 std::vector<std::string> objectNamesFromFile(std::string const filename) {
   std::ifstream file(filename);
