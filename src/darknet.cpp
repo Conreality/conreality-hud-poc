@@ -4,8 +4,6 @@
 #include "config.h"
 #endif
 
-#include "yolo_v2_class.hpp"
-
 #include "globals.h"
 #include "darknet.h"
 

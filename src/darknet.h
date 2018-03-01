@@ -7,6 +7,8 @@
 #ifndef DARKNET_H
 #define DARKNET_H
 
+#include "yolo_v2_class.hpp"
+
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
 cv::Scalar objectIdToColor(int obj_id);

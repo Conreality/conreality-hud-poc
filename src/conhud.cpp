@@ -6,14 +6,13 @@
 
 #include "version.h"
 
-#ifndef DISABLE_DARKNET
-#include "yolo_v2_class.hpp"
-#endif
-
 #include "globals.h"
 #include "rendering.h"
 #include "input.h"
+
+#ifndef DISABLE_DARKNET
 #include "darknet.h"
+#endif
 
 struct image_data {
   cv::Mat frame;

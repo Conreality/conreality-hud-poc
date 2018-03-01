@@ -53,7 +53,7 @@ struct Globals {
     bool flip_image = false;
     bool edge_filter = false;
     bool edge_filter_ext = false;
-    bool joystick_connected = true;
+    bool joystick_connected = false;
     bool fullscreen = true;
     bool save_output_videofile = false;
   } flags;
