@@ -12,23 +12,20 @@
 
 #include "globals.h"
 #include "rendering.h"
+#include "input.h"
 
 struct image_data {
   cv::Mat frame;
 };
 
 Globals global;
-
-void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers);
-void handleMouseButton(GLFWwindow* window, int button, int action, int mods);
-static void handleEvents();
+void edgeFilter(cv::Mat* image);
 #ifndef DISABLE_DARKNET
 void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> object_names);
-void edgeFilter(cv::Mat* image);
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names);
-#endif
 cv::Scalar objectIdToColor(int obj_id);
 std::vector<std::string> objectNamesFromFile(std::string const filename);
+#endif
 void printHelp();
 
 /********************
@@ -88,9 +85,22 @@ int main(int argc, char* argv[]) {
 
 #ifndef DISABLE_DARKNET
   Detector detector(cfg_file, weights_file);
+  auto object_names = objectNamesFromFile(names_file);
 #endif
 
-  auto object_names = objectNamesFromFile(names_file);
+#ifndef DISABLE_OSVR
+  osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
+  osvr::clientkit::DisplayConfig display(ctx);
+
+  if (!display.valid()) {
+    std::printf("Failed to get display config!\n");
+    return EXIT_FAILURE;
+  }
+
+  while (!display.checkStartup()) {
+    ctx.update();
+  }
+#endif
 
   GLuint texture;
 
@@ -128,20 +138,6 @@ int main(int argc, char* argv[]) {
   glClearDepth(0.0f);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
-#ifndef DISABLE_OSVR
-  osvr::clientkit::ClientContext ctx("com.osvr.conreality.hud");
-  osvr::clientkit::DisplayConfig display(ctx);
-
-  if (!display.valid()) {
-    std::printf("Failed to get display config!\n");
-    return EXIT_FAILURE;
-  }
-
-  while (!display.checkStartup()) {
-    ctx.update();
-  }
-#endif
-
   std::string file_ext = filename.substr(filename.find_last_of(".") + 1);
 
   cv::VideoCapture capture;
@@ -156,8 +152,7 @@ int main(int argc, char* argv[]) {
 //capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
 //capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
 
-  cv::Mat capt_frame;
-  cv::Mat gray_image, contours;
+  cv::Mat capt_frame, gray_image, contours;
 
   capture >> capt_frame;
   if (capt_frame.empty()) { std::printf("Failed to capture a frame!\n"); return EXIT_FAILURE; }
@@ -210,7 +205,6 @@ int main(int argc, char* argv[]) {
 #endif
 
       if (global.flags.edge_filter) { edgeFilter(&pros_image.frame); }
-
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
 /*update and render video feed*/
@@ -255,48 +249,23 @@ int main(int argc, char* argv[]) {
 *                   *
 ********************/
 
-/*keyboard input*/
-void handleKey(GLFWwindow* window, int key, int code, int action, int modifiers) {
-  global.kb_control_queue.try_emplace(kb_control_input{key, code, action, modifiers});
-}
+void edgeFilter(cv::Mat* image) {
 
-void handleMouseButton(GLFWwindow* window, int button, int action, int mods) {
-  double xpos, ypos;
-  glfwGetCursorPos(window, &xpos, &ypos);
-  global.ms_control_queue.try_emplace(ms_control_input{button, action, mods, xpos, ypos});
-}
+  cv::Mat src_gray, canny_output;
+  std::vector<std::vector<cv::Point>> contours;
+  std::vector<cv::Vec4i> hierarchy;
+  cvtColor(*image, src_gray, CV_BGR2GRAY);
+  cv::blur(src_gray, src_gray, cv::Size(3,3));
 
-void handleEvents() {
+  cv::Canny(src_gray, canny_output, 30, 120, 3);
 
-  kb_control_input kb_event;
-  global.kb_control_queue.try_pop(kb_event);
+  cv::findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
 
-  if (kb_event.action == GLFW_PRESS) {
-//    std::printf("%d \n", kb_event.key);
-    switch (kb_event.key) {
-      case GLFW_KEY_ESCAPE:
-        global.flags.is_running = false;
-        break;
-      case GLFW_KEY_E:
-        if (kb_event.modifiers == GLFW_MOD_SHIFT) { global.flags.edge_filter_ext = !(global.flags.edge_filter_ext); break; }
-        global.flags.edge_filter = !(global.flags.edge_filter);
-        break;
-      case GLFW_KEY_F:
-        global.flags.flip_image = !(global.flags.flip_image);
-        break;
-      case GLFW_KEY_I:
-        global.flags.show_items = !(global.flags.show_items);
-        break;
-      default:
-        break;
-    }
-  }
+  if (global.flags.edge_filter_ext) { *image = cv::Scalar(0,0,0); }
 
-  ms_control_input ms_event;
-  global.ms_control_queue.try_pop(ms_event);
-
-  if (ms_event.action == GLFW_PRESS) {
-//    std::cout << ms_event.xpos << ", " << ms_event.ypos << std::endl;
+  for (unsigned int i = 0; i < contours.size(); i++) {
+    cv::Scalar color = cv::Scalar(0,255,0);
+    cv::drawContours(*image, contours, i, color, 1, 8, hierarchy, 0, cv::Point());
   }
 }
 
@@ -316,27 +285,6 @@ void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std:
     }
   }
 }
-#endif
-
-void edgeFilter(cv::Mat* image) {
-
-  cv::Mat src_gray, canny_output;
-  std::vector<std::vector<cv::Point>> contours;
-  std::vector<cv::Vec4i> hierarchy;
-  cvtColor(*image, src_gray, CV_BGR2GRAY);
-  cv::blur(src_gray, src_gray, cv::Size(3,3));
-
-  cv::Canny(src_gray, canny_output, 30, 120, 3);
-
-  cv::findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
-
-  if (global.flags.edge_filter_ext) { *image = cv::Scalar(0,0,0); }
-
-  for (int i = 0; i < contours.size(); i++) {
-    cv::Scalar color = cv::Scalar(0,255,0);
-    cv::drawContours(*image, contours, i, color, 1, 8, hierarchy, 0, cv::Point());
-  }
-}
 
 cv::Scalar objectIdToColor(int obj_id) {
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
@@ -347,7 +295,6 @@ cv::Scalar objectIdToColor(int obj_id) {
   return color;
 }
 
-#ifndef DISABLE_DARKNET
 void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::string> const object_names) {
   for (auto &i : result_vec) {
     if (object_names.size() > i.obj_id) { std::cout << object_names[i.obj_id] << " - "; }
@@ -356,7 +303,6 @@ void showConsoleResult(std::vector<bbox_t> const result_vec, std::vector<std::st
       << std::setprecision(3) << ", prob = " << i.prob << std::endl;
   }
 }
-#endif
 
 std::vector<std::string> objectNamesFromFile(std::string const filename) {
   std::ifstream file(filename);
@@ -366,6 +312,7 @@ std::vector<std::string> objectNamesFromFile(std::string const filename) {
   std::printf("Object names loaded\n");
   return file_lines;
 }
+#endif
 
 void printHelp() {
   std::printf("help\n");

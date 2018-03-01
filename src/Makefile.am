@@ -7,7 +7,7 @@ AM_CPPFLAGS   += $(TBB_CFLAGS)
 
 bin_PROGRAMS   = conhud
 
-conhud_SOURCES = conhud.cpp
+conhud_SOURCES = conhud.cpp rendering.cpp input.cpp
 
 conhud_LDADD   =
 conhud_LDADD  += $(OPENCV_LIBS)
