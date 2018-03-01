@@ -127,6 +127,11 @@ int main(int argc, char* argv[]) {
   glfwSetKeyCallback(window, handleKey);
   glfwSetMouseButtonCallback(window, handleMouseButton);
 
+  if (glfwJoystickPresent(GLFW_JOYSTICK_1)) {
+    global.flags.joystick_connected = true;
+    std::printf("Joystick detected\n");
+  }
+
   glfwSwapInterval(1);
 
   glViewport(0, 0, window_w, window_h);
@@ -190,6 +195,7 @@ int main(int argc, char* argv[]) {
 
     next_frame += std::chrono::milliseconds(FRAME_DELAY);
 
+    if (global.flags.joystick_connected) { handleJoystick(GLFW_JOYSTICK_1); }
     handleEvents();
 
     if (!image_queue.empty()) {

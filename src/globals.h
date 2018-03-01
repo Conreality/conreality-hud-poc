@@ -40,6 +40,11 @@ struct ms_control_input {
   double xpos, ypos;
 };
 
+struct js_control_input {
+   const unsigned char* buttons;
+   const float* axes;
+};
+
 struct Globals {
 
   struct {
@@ -48,10 +53,12 @@ struct Globals {
     bool flip_image = false;
     bool edge_filter = false;
     bool edge_filter_ext = false;
+    bool joystick_connected = true;
     bool fullscreen = true;
     bool save_output_videofile = false;
   } flags;
 
   tbb::concurrent_bounded_queue<kb_control_input> kb_control_queue;
   tbb::concurrent_bounded_queue<ms_control_input> ms_control_queue;
+  tbb::concurrent_bounded_queue<js_control_input> js_control_queue;
 };
