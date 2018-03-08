@@ -81,7 +81,7 @@ PKG_CHECK_MODULES([GLEW], [glew],
   [AC_DEFINE([HAVE_GLEW], [1], [Define to 1 if you have GLEW (OpenGL Extension Wrangler Library).])])
 AM_CONDITIONAL([HAVE_GLEW], [test "x$GLEW_LIBS" != "x"])
 
-PKG_CHECK_MODULES([GLFW], [glfw3],
+PKG_CHECK_MODULES_STATIC([GLFW], [glfw3],
   [AC_DEFINE([HAVE_GLFW], [1], [Define to 1 if you have GLFW3.])])
 AM_CONDITIONAL([HAVE_GLFW], [test "x$GLFW_LIBS" != "x"])
 
