@@ -31,11 +31,14 @@ void printHelp();
 int main(int argc, char* argv[]) {
 
   std::string filename = "0";
-  std::string names_file = "darknet/data/voc.names";
-  std::string cfg_file = "darknet/cfg/tiny-yolo-voc.cfg";
-  std::string weights_file = "darknet/tiny-yolo-voc.weights";
+//std::string names_file = "darknet/data/voc.names";
+//std::string cfg_file = "darknet/cfg/tiny-yolo-voc.cfg";
+//std::string weights_file = "darknet/tiny-yolo-voc.weights";
 //std::string cfg_file = "darknet/cfg/yolo-voc.cfg";
 //std::string weights_file = "darknet/yolo-voc.weights";
+  std::string names_file = "darknet/data/custom.names";
+  std::string cfg_file = "darknet/cfg/yolo-voc.2.0.cfg";
+  std::string weights_file = "darknet/yolo-voc_custom.weights";
 
 /*used for limiting clock speed*/
   const int FPS = 30;

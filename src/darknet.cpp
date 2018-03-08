@@ -11,14 +11,17 @@ void drawBoxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std:
   int const colors[6][3] = { {1,0,1},{0,0,1},{0,1,1},{0,1,0},{1,1,0},{1,0,0} };
   for (auto &i : result_vec) {
     cv::Scalar color = objectIdToColor(i.obj_id);
-    cv::rectangle(mat_img, cv::Rect(i.x, i.y, i.w, i.h), color, 5);
     if (object_names.size() > i.obj_id) {
       std::string obj_name = object_names[i.obj_id];
-      if (i.track_id > 0) { obj_name += " - " + std::to_string(i.track_id); }
-      cv::Size const text_size = getTextSize(obj_name, cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, 2, 0);
-      int const max_width = (text_size.width > i.w + 2) ? text_size.width : (i.w + 2);
-      cv::rectangle(mat_img, cv::Point2f(std::max((int)i.x - 3, 0), std::max((int)i.y - 30, 0)), cv::Point2f(std::min((int)i.x + max_width, mat_img.cols - 1), std::min((int)i.y, mat_img.rows - 1)), color, CV_FILLED, 8, 0);
-      putText(mat_img, obj_name, cv::Point2f(i.x, i.y -10), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(0,0,0), 2);
+      if (obj_name == "head") { cv::circle(mat_img, cv::Point(i.x+i.w/2, i.y+i.h/2), i.h/2, color, 2); }
+      else {
+        cv::rectangle(mat_img, cv::Rect(i.x, i.y, i.w, i.h), color, 5);
+        if (i.track_id > 0) { obj_name += " - " + std::to_string(i.track_id); }
+        cv::Size const text_size = getTextSize(obj_name, cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, 2, 0);
+        int const max_width = (text_size.width > i.w + 2) ? text_size.width : (i.w + 2);
+        cv::rectangle(mat_img, cv::Point2f(std::max((int)i.x - 3, 0), std::max((int)i.y - 30, 0)), cv::Point2f(std::min((int)i.x + max_width, mat_img.cols - 1), std::min((int)i.y, mat_img.rows - 1)), color, CV_FILLED, 8, 0);
+        putText(mat_img, obj_name, cv::Point2f(i.x, i.y -10), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(0,0,0), 2);
+      }
     }
   }
 }
