@@ -1,3 +1,6 @@
 # Object files and program files
 conhud
-conhud.o
+*.o
+
+# GNU Autotools
+.deps/
