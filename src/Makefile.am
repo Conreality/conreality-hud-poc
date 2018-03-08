@@ -19,8 +19,8 @@ conhud_LDADD  += $(TBB_LIBS)
 
 # FIXME
 if !DISABLE_DARKNET
-  conhud_LDADD += /usr/local/lib/darknet.so
-conhud_SOURCES += darknet.cpp
+  conhud_LDADD += -l:darknet.so
+  conhud_SOURCES += darknet.cpp
 endif
 
 if !DISABLE_OSVR
