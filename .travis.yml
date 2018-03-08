@@ -1,0 +1,24 @@
+dist: xenial
+sudo: required
+before_install:
+  - sudo add-apt-repository -y ppa:sbadia/opencv
+  - sudo apt-get -qq update
+  - sudo apt-get install -y build-essential autoconf autoconf-archive automake m4 libtool perl gettext pkg-config cmake autoconf-archive
+  - sudo apt-get install -y libopencv-dev libopencv-shape-dev
+  - sudo apt-get install -y libglew-dev
+  - sudo apt-get install -y libglfw3 libglfw3-dev
+  - sudo apt-get install -y libjsoncpp1 libjsoncpp-dev
+  - sudo apt-get install -y libtbb2 libtbb-dev
+  - sudo apt-get install -y libglm-dev
+
+language: cpp
+compiler: c++
+os: linux
+
+script:
+  - libtoolize --force
+  - aclocal
+  - autoheader
+  - automake --force-missing --add-missing
+  - ./autogen.sh && ./configure --disable-darknet --disable-osvr && make && make check
+
