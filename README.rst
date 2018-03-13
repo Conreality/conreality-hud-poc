@@ -56,6 +56,19 @@ Configuring, building, and installing the program (by default, into
 Configuration
 =============
 
+Running
+=======
+
+Runtime keyboard hotkeys::
+
+  ESC     - Exit the program.
+  E       - Toggle an edge filter.
+  Shift-E - Toggle to draw only edges.
+  F       - Toggle image flipping.
+  I       - Toggle on-screen items for a HMD.
+  N       - Toggle on-screen name display.
+  T       - Toggle on-screen time display.
+
 See Also
 ========
 

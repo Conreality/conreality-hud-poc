@@ -55,7 +55,11 @@ void handleEvents() {
         global.flags.is_running = false;
         break;
       case GLFW_KEY_E:
-        if (kb_event.modifiers == GLFW_MOD_SHIFT) { global.flags.edge_filter_ext = !(global.flags.edge_filter_ext); break; }
+        if (kb_event.modifiers == GLFW_MOD_SHIFT) {
+          if (global.flags.edge_filter == false) { global.flags.edge_filter = true; }
+          global.flags.edge_filter_ext = !(global.flags.edge_filter_ext);
+          break;
+        }
         global.flags.edge_filter = !(global.flags.edge_filter);
         break;
       case GLFW_KEY_F:
