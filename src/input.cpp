@@ -64,6 +64,12 @@ void handleEvents() {
       case GLFW_KEY_I:
         global.flags.show_items = !(global.flags.show_items);
         break;
+      case GLFW_KEY_N:
+        global.flags.display_name = !(global.flags.display_name);
+        break;
+      case GLFW_KEY_T:
+        global.flags.display_time = !(global.flags.display_time);
+        break;
       default:
         break;
     }
@@ -75,6 +81,8 @@ void handleEvents() {
   if (ms_event.action == GLFW_PRESS) {
 //    std::cout << ms_event.xpos << ", " << ms_event.ypos << std::endl;
   }
+
+  if (global.flags.joystick_connected) { handleJoystick(GLFW_JOYSTICK_1); }
 
   js_control_input js_event;
   global.js_control_queue.try_pop(js_event);

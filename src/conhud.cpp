@@ -45,6 +45,13 @@ int main(int argc, char* argv[]) {
   const int FRAME_DELAY = 1000 / FPS;
   auto next_frame = std::chrono::steady_clock::now();
 
+  time_t rawtime;
+  struct tm* timeinfo;
+  char timeText[10];
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  strftime(timeText, 80, "%H:%M:%S", timeinfo);
+
 /*set default screen size*/
   int window_h = 1080;
   int window_w = 1920;
@@ -192,7 +199,7 @@ int main(int argc, char* argv[]) {
 
     next_frame += std::chrono::milliseconds(FRAME_DELAY);
 
-    if (global.flags.joystick_connected) { handleJoystick(GLFW_JOYSTICK_1); }
+
     handleEvents();
 
     if (!image_queue.empty()) {
@@ -208,6 +215,14 @@ int main(int argc, char* argv[]) {
 #endif
 
       if (global.flags.edge_filter) { edgeFilter(&pros_image.frame); }
+      if (global.flags.display_time) {
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        strftime(timeText, 80, "%H:%M:%S", timeinfo);
+
+        putText(pros_image.frame, timeText, cv::Point(frame_size.width-230,frame_size.height-150), cv::FONT_HERSHEY_COMPLEX_SMALL, 0.8, cv::Scalar(0,255,0), 2);
+      }
+      if (global.flags.display_name) { putText(pros_image.frame, "player1", cv::Point(frame_size.width/2, 50), cv::FONT_HERSHEY_COMPLEX_SMALL, 0.8, cv::Scalar(0,255,0), 2); }
       if (global.flags.flip_image) { cv::flip(pros_image.frame, pros_image.frame, 0); }
 
 /*update and render video feed*/
