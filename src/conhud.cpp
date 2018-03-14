@@ -14,6 +14,10 @@
 #include "darknet.h"
 #endif
 
+#ifndef DISABLE_LEAPMOTION
+#include "leapfuncs.h"
+#endif
+
 struct image_data {
   cv::Mat frame;
 };
@@ -90,6 +94,14 @@ int main(int argc, char* argv[]) {
 #ifndef DISABLE_DARKNET
   Detector detector(cfg_file, weights_file);
   auto object_names = objectNamesFromFile(names_file);
+#endif
+
+#ifndef DISABLE_LEAPMOTION
+  Leap::Controller leap_controller;
+  leap_controller.setPolicy(Leap::Controller::POLICY_OPTIMIZE_HMD);
+  leap_controller.enableGesture(Leap::Gesture::TYPE_SWIPE);
+  leap_event_listener listener;
+  leap_controller.addListener(listener);
 #endif
 
 #ifndef DISABLE_OSVR
@@ -255,6 +267,7 @@ int main(int argc, char* argv[]) {
   glfwTerminate();
 
   cv::destroyAllWindows();
+  leap_controller.removeListener(listener);
 
   std::printf("Program exited\n");
 

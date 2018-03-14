@@ -65,7 +65,7 @@ Runtime keyboard hotkeys::
   E       - Toggle an edge filter.
   Shift-E - Toggle to draw only edges.
   F       - Toggle image flipping.
-  I       - Toggle on-screen items for a HMD.
+  I       - Toggle on-screen items for an HMD.
   N       - Toggle on-screen name display.
   T       - Toggle on-screen time display.
 

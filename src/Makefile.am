@@ -23,6 +23,11 @@ if !DISABLE_DARKNET
   conhud_SOURCES += darknet.cpp
 endif
 
+if !DISABLE_LEAPMOTION
+  conhud_LDADD  += -l:libLeap.so
+  conhud_SOURCES += leapfuncs.cpp
+endif
+
 if !DISABLE_OSVR
   AM_CPPFLAGS  += -I/usr/include/osvr
   conhud_LDADD += -losvrClientKit

@@ -20,5 +20,5 @@ script:
   - aclocal
   - autoheader
   - automake --force-missing --add-missing
-  - ./autogen.sh && ./configure --disable-darknet --disable-osvr && make && make check
+  - ./autogen.sh && ./configure --disable-darknet --disable-leapmotion --disable-osvr && make && make check
 

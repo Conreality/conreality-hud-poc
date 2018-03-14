@@ -59,6 +59,7 @@ AC_DEFUN([AX_ARG_ENABLE_FEATURE], [dnl
   AM_CONDITIONAL([DISABLE_]FEATURE_ID, [test "x$enable_$1" == "xno"])
 ])
 AX_ARG_ENABLE_FEATURE([darknet], [Darknet support]) # --enable-darknet/--disable-darknet
+AX_ARG_ENABLE_FEATURE([leapmotion], [LeapMotion support]) # --enable-leapmotion/--disable-leapmotion
 AX_ARG_ENABLE_FEATURE([openhmd], [OpenHMD support]) # --enable-openhmd/--disable-openhmd
 AX_ARG_ENABLE_FEATURE([openvr],  [OpenVR support])  # --enable-openvr/--disable-openvr
 AX_ARG_ENABLE_FEATURE([osvr],    [OSVR support])    # --enable-osvr/--disable-osvr
