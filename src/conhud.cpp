@@ -267,7 +267,9 @@ int main(int argc, char* argv[]) {
   glfwTerminate();
 
   cv::destroyAllWindows();
+#ifndef DISABLE_LEAPMOTION
   leap_controller.removeListener(listener);
+#endif
 
   std::printf("Program exited\n");
 
